@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestionale Forgia del Dannato-Horde | RP</title>
+    <link rel="shortcut icon" href="logo.ico" type="image/x-icon">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen font-sans flex flex-col relative overflow-x-hidden">
+
+    <!-- SCHERMATA MANUTENZIONE -->
+    <div id="schermata-manutenzione">
+        <div class="card-manutenzione">
+            <div class="badge-manutenzione">
+                <span class="badge-dot"></span>
+                Aggiornamento in corso
+            </div>
+            <h1 class="titolo-manutenzione">Sito in manutenzione</h1>
+            <p class="testo-manutenzione">
+                Il developer <span class="dev-name">Vitrio</span> sta lavorando per migliorare il sito e implementare nuove funzionalità. Il servizio tornerà regolare a breve.
+            </p>
+            <div class="progress-bar-container">
+                <div class="progress-bar-line"></div>
+            </div>
+            <div class="footer-manutenzione">
+                Vitrio - Tutti i diritti riservati<br>
+                <span class="footer-highlight">Sito in manutenzione! Torniamo a breve!</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-banner-overlay"></div>
+
+    <!-- SMART ACTION MODAL -->
+    <div id="smart-action-modal" class="fixed inset-0 bg-gray-950/80 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 hidden">
+        <div class="bg-gray-800 border border-gray-700 p-6 rounded-2xl max-w-md w-full shadow-2xl transform transition-all scale-95 opacity-0 duration-200" id="smart-modal-box">
+            <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-3">
+                <h3 id="smart-modal-title" class="text-xl font-bold text-amber-400 tracking-wide">Azione Rapida</h3>
+                <button onclick="closeSmartModal()" class="text-gray-400 hover:text-white transition transform hover:scale-110">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            
+            <form id="smart-modal-form" class="space-y-4">
+                <input type="hidden" id="smart-modal-type">
+                <input type="hidden" id="smart-modal-item-id">
+                
+                <div id="smart-modal-employee-container">
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Dipendente Selezionato</label>
+                    <select id="smart-modal-employee" required class="w-full px-3 py-2.5 bg-gray-900 border border-gray-600 rounded-xl text-white focus:outline-none focus:border-amber-500 shadow-inner">
+                    </select>
+                </div>
+                
+                <div id="smart-modal-action-container" class="hidden">
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Che operazione vuoi fare?</label>
+                    <select id="smart-modal-action" class="w-full px-3 py-2.5 bg-gray-900 border border-gray-600 rounded-xl text-white focus:outline-none focus:border-amber-500 shadow-inner">
+                        <option value="preleva">Preleva 📤</option>
+                        <option value="deposita">Deposita 📥</option>
+                    </select>
+                </div>
+
+                <div id="smart-modal-custom-name-container" class="hidden">
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Nome Servizio / Oggetto Libero</label>
+                    <input type="text" id="smart-modal-custom-name" placeholder="Esempio: Lavoro fuori listino..." class="w-full px-3 py-2.5 bg-gray-900 border border-gray-600 rounded-xl text-white focus:outline-none focus:border-amber-500 shadow-inner">
+                </div>
+                
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 mb-1">Quantità</label>
+                        <input type="number" id="smart-modal-quantity" value="1" min="1" required class="w-full px-3 py-2.5 bg-gray-900 border border-gray-600 rounded-xl text-white focus:outline-none focus:border-amber-500 shadow-inner text-center font-bold">
+                    </div>
+                    <div id="smart-modal-price-container" class="hidden">
+                        <label id="smart-modal-price-label" class="block text-xs font-medium text-gray-400 mb-1">Costo (€)</label>
+                        <input type="number" step="0.01" id="smart-modal-price" class="w-full px-3 py-2.5 bg-gray-900 border border-gray-600 rounded-xl text-white focus:outline-none focus:border-amber-500 shadow-inner font-bold text-emerald-400">
+                    </div>
+                </div>
+
+                <div id="smart-modal-pct-container" class="hidden">
+                    <label class="block text-xs font-medium text-gray-400 mb-1">% Guadagno Forgia (aggiunta sul prezzo base)</label>
+                    <input type="number" step="0.01" min="0" id="smart-modal-free-pct" placeholder="es. 40" class="w-full px-3 py-2.5 bg-gray-900 border border-gray-600 rounded-xl text-white focus:outline-none focus:border-amber-500 shadow-inner font-bold text-amber-400 text-center">
+                    <p class="text-[10px] text-gray-500 mt-1.5 leading-snug">
+                        La % che inserisci è il <strong class="text-amber-400">guadagno Forgia</strong> (aggiunto al prezzo base).<br>
+                        Il guadagno del dipendente si calcola sulla <strong class="text-indigo-400">% personale</strong> del profilo.
+                    </p>
+                    <div id="smart-modal-free-preview" class="mt-2 p-2.5 rounded-xl bg-gray-900/80 border border-gray-700 text-xs space-y-1 hidden">
+                        <div class="flex justify-between gap-2"><span class="text-gray-400">Prezzo senza %</span><span id="preview-base" class="text-gray-200 font-semibold">€ 0,00</span></div>
+                        <div class="flex justify-between gap-2"><span class="text-gray-400">Guadagno Forgia (%)</span><span id="preview-forge" class="text-amber-400 font-bold">€ 0,00</span></div>
+                        <div class="flex justify-between gap-2"><span class="text-gray-400">Prezzo con % (totale)</span><span id="preview-total" class="text-emerald-400 font-bold">€ 0,00</span></div>
+                        <div class="flex justify-between gap-2"><span class="text-gray-400">Guadagno dipendente</span><span id="preview-emp" class="text-indigo-400 font-bold">€ 0,00</span></div>
+                    </div>
+                </div>
+
+                <div id="smart-modal-reason-container" class="hidden">
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Motivo (Opzionale)</label>
+                    <input type="text" id="smart-modal-reason" placeholder="Es. Manutenzione, Rifornimento..." class="w-full px-3 py-2.5 bg-gray-900 border border-gray-600 rounded-xl text-white focus:outline-none focus:border-amber-500 shadow-inner">
+                </div>
+                
+                <button type="submit" id="smart-modal-submit" class="w-full py-3 bg-amber-500 hover:bg-amber-600 text-gray-900 font-extrabold rounded-xl transition transform active:scale-95 shadow-lg mt-2">
+                    Conferma
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- CUSTOM CONFIRM MODAL -->
+    <div id="custom-modal" class="fixed inset-0 bg-gray-950/80 backdrop-blur-sm z-[110] flex items-center justify-center p-4 hidden">
+        <div class="bg-gray-800 border border-gray-700 p-6 rounded-2xl max-w-md w-full shadow-2xl transform transition-all scale-95 opacity-0 duration-200" id="modal-box">
+            <div class="flex items-center space-x-3 text-amber-400 mb-4">
+                <i id="modal-icon" class="fa-solid fa-circle-question text-2xl"></i>
+                <h3 id="modal-title" class="text-lg font-bold tracking-wide">Conferma Operazione</h3>
+            </div>
+            <p id="modal-message" class="text-gray-300 text-sm mb-6">Sei sicuro di voler procedere con questa azione?</p>
+            <div class="flex justify-end space-x-3">
+                <button id="modal-cancel-btn" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-xl font-medium text-sm transition">Annulla</button>
+                <button id="modal-confirm-btn" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold text-sm transition">Conferma</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LOGIN PAGE -->
+    <div id="login-page" class="flex flex-1 items-center justify-center px-4 py-12">
+        <div class="bg-gray-800/90 backdrop-blur-sm p-8 rounded-2xl shadow-2xl w-full max-w-md border border-gray-700">
+            <div class="text-center mb-8">
+                <div class="mb-4 flex justify-center">
+                    <img src="logo.png" alt="Forgia del Dannato Logo" class="h-24 w-auto object-contain" style="display: block;" id="login-main-logo">
+                </div>
+                <h1 class="text-3xl font-bold tracking-wider" style="background: linear-gradient(90deg, #d97706, #e85d04, #dc2626); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">FORGIA DEL DANNATO</h1>
+                <p class="text-gray-400 mt-2">Gestionale Vendite & Staff</p>
+            </div>
+
+            <!-- LOGIN DIPENDENTE -->
+            <div id="login-staff-panel">
+                <p class="text-xs text-center text-gray-500 mb-4">Accedi con nickname (o codice login) e password</p>
+                <form id="login-staff-form" class="space-y-5">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">Nickname / Login</label>
+                        <input type="text" id="staff-login" required autocomplete="username" class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl focus:outline-none focus:border-amber-500 text-white transition" placeholder="Il tuo nickname">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">Password</label>
+                        <input type="password" id="staff-password" required autocomplete="current-password" class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl focus:outline-none focus:border-amber-500 text-white transition" placeholder="••••••••">
+                    </div>
+                    <button type="submit" class="w-full py-3 bg-amber-500 hover:bg-amber-600 text-gray-900 font-bold rounded-xl transition transform active:scale-95 shadow-lg shadow-amber-500/10">
+                        Accedi <i class="fa-solid fa-right-to-bracket ml-2"></i>
+                    </button>
+                </form>
+                <div class="mt-6 pt-5 border-t border-gray-700 text-center">
+                    <button type="button" id="show-gestore-login" class="text-sm text-amber-400 hover:text-amber-300 transition font-medium">
+                        <i class="fa-solid fa-user-shield mr-1"></i> Accesso Gestore
+                    </button>
+                </div>
+            </div>
+
+            <!-- LOGIN GESTORE -->
+            <div id="login-gestore-panel" class="hidden">
+                <p class="text-xs text-center text-gray-500 mb-4">Accesso riservato all&apos;amministrazione</p>
+                <form id="login-gestore-form" class="space-y-5">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">Email Gestore</label>
+                        <input type="email" id="gestore-email" required class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl focus:outline-none focus:border-amber-500 text-white transition" placeholder="forgiadeldannato@horde.it" value="forgiadeldannato@horde.it">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-2">Password</label>
+                        <input type="password" id="gestore-password" required class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-xl focus:outline-none focus:border-amber-500 text-white transition">
+                    </div>
+                    <button type="submit" class="w-full py-3 bg-amber-500 hover:bg-amber-600 text-gray-900 font-bold rounded-xl transition transform active:scale-95 shadow-lg shadow-amber-500/10">
+                        Accedi come Gestore <i class="fa-solid fa-shield-halved ml-2"></i>
+                    </button>
+                </form>
+                <div class="mt-6 pt-5 border-t border-gray-700 text-center">
+                    <button type="button" id="show-staff-login" class="text-sm text-gray-400 hover:text-amber-400 transition">
+                        <i class="fa-solid fa-arrow-left mr-1"></i> Torna al login staff
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN DASHBOARD -->
+    <div id="main-dashboard" class="hidden min-h-screen flex flex-col">
+        <nav class="bg-gray-800/95 backdrop-blur-sm border-b border-gray-700 px-4 py-3 flex flex-wrap justify-between items-center gap-3">
+            <div class="flex items-center space-x-3">
+                <img src="logo.png" alt="Logo" class="h-9 w-auto object-contain" id="nav-main-logo">
+                <span class="text-xl font-black tracking-wider" style="background: linear-gradient(90deg, #d97706, #e85d04); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">FORGIA DEL DANNATO</span>
+                <span id="role-badge" class="px-3 py-1 bg-gray-700 text-xs font-semibold rounded-full text-gray-300"></span>
+            </div>
+            <div class="flex items-center flex-wrap gap-2">
+                <button id="nav-sales-btn" class="px-3 py-2 rounded-xl nav-active font-medium transition text-sm">
+                    <i class="fa-solid fa-cash-register mr-1"></i> Vendite
+                </button>
+                <button id="nav-inventory-btn" class="px-3 py-2 rounded-xl bg-gray-700 text-gray-200 font-medium transition hover:bg-gray-600 text-sm">
+                    <i class="fa-solid fa-boxes-stacked mr-1"></i> Inventario
+                </button>
+                <button id="nav-admin-btn" class="px-3 py-2 rounded-xl bg-gray-700 text-gray-200 font-medium transition hover:bg-gray-600 text-sm">
+                    <i class="fa-solid fa-user-gear mr-1"></i> Gestione
+                </button>
+                <button id="logout-btn" class="p-2 bg-red-600/20 text-red-400 hover:bg-red-600 hover:text-white rounded-xl transition">
+                    <i class="fa-solid fa-power-off"></i>
+                </button>
+            </div>
+        </nav>
+
+        <div id="toast-container" class="fixed top-20 right-4 z-[200] flex flex-col gap-2 items-end pointer-events-none" style="max-width: min(360px, calc(100vw - 2rem));"></div>
+
+        <main class="flex-1 p-6 max-w-7xl w-full mx-auto relative z-0">
+            
+            <!-- ========== SEZIONE VENDITE ========== -->
+            <section id="sales-section" class="space-y-6">
+                <div class="bg-gray-800/90 backdrop-blur-sm p-6 rounded-2xl border border-gray-700 shadow-xl">
+                    <h2 class="text-xl font-bold text-amber-400 mb-4 flex items-center">
+                        <i class="fa-solid fa-bolt mr-2 text-orange-400"></i> Azioni Rapide Vendita
+                    </h2>
+                    <p class="text-gray-400 text-xs mb-4">Clicca su un servizio per aprire il terminale rapido ed effettuare la registrazione.</p>
+                    <div id="quick-sales-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 max-h-[280px] overflow-y-auto pr-1">
+                    </div>
+                </div>
+
+                <div class="bg-gray-800/90 backdrop-blur-sm p-6 rounded-2xl border border-gray-700 shadow-xl">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                        <h2 class="text-xl font-bold text-amber-400 flex items-center">
+                            <i class="fa-solid fa-list-check mr-2"></i> Vendite Correnti (Settimana)
+                        </h2>
+                        <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                            <select id="sales-employee-filter" class="px-3 py-1.5 bg-gray-700 border border-gray-600 rounded-xl text-xs font-bold text-amber-400 focus:outline-none focus:border-amber-500">
+                                <option value="all">📊 Tutti i Dipendenti</option>
+                            </select>
+                            <span class="text-xs bg-amber-500/10 text-amber-400 px-3 py-1 rounded-full border border-amber-500/20 whitespace-nowrap">Reset Automatico Domenica</span>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto max-h-[280px] overflow-y-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="border-b border-gray-700 text-gray-400 text-xs uppercase tracking-wider sticky top-0 bg-gray-800 z-10">
+                                    <th class="pb-3 pt-2">Data</th>
+                                    <th class="pb-3 pt-2">Dipendente</th>
+                                    <th class="pb-3 pt-2">Servizio (Qta)</th>
+                                    <th class="pb-3 pt-2">Totale Incassato</th>
+                                    <th class="pb-3 pt-2">Guadagno Forgia</th>
+                                    <th class="pb-3 pt-2">Spett. Dip.</th>
+                                </tr>
+                            </thead>
+                            <tbody id="current-sales-table" class="divide-y divide-gray-700 text-sm">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="manager-sales-archive-section" class="bg-gray-800/90 backdrop-blur-sm p-6 rounded-2xl border border-gray-700 shadow-xl">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                        <h2 class="text-xl font-bold text-amber-400 flex items-center">
+                            <i class="fa-solid fa-box-archive mr-2"></i> Archivio Storico Vendite
+                        </h2>
+                        <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                            <label class="text-xs font-bold text-gray-400 uppercase mr-1">Filtra:</label>
+                            <select id="archive-window-employee-filter" class="px-3 py-1.5 bg-gray-700 border border-gray-600 rounded-xl text-xs font-bold text-amber-400 focus:outline-none focus:border-amber-500">
+                                <option value="all">📊 Tutti i Dipendenti</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="archive-window-weeks-container" class="space-y-6 max-h-[350px] overflow-y-auto pr-2 bg-gray-900/40 p-3 rounded-xl border border-gray-700/50">
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========== SEZIONE INVENTARIO ========== -->
+            <section id="inventory-section" class="hidden space-y-6">
+                <div class="inv-layout-grid grid grid-cols-1 xl:grid-cols-3 gap-6">
+                    <div class="inv-admin-col space-y-6 xl:col-span-1">
+                        <div id="admin-inventory-controls" class="hidden bg-gray-800/90 backdrop-blur-sm p-6 rounded-2xl border-2 border-amber-500/40 shadow-xl">
+                            <h2 class="text-lg font-bold text-amber-400 mb-4 flex items-center">
+                                <i class="fa-solid fa-plus-circle mr-2"></i> Aggiungi a Deposito (Gestore)
+                            </h2>
+                            <form id="inventory-admin-form" class="space-y-4">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-400 mb-1">Nome Oggetto</label>
+                                    <input type="text" id="inv-admin-name" required class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-xl text-white focus:outline-none focus:border-amber-500">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-400 mb-1">Immagine (dalla libreria)</label>
+                                    <select id="inv-admin-img" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-xl text-white focus:outline-none focus:border-amber-500">
+                                        <option value="">— Nessuna / placeholder —</option>
+                                    </select>
+                                    <p class="text-[10px] text-gray-500 mt-1">Carica le PNG in Gestione → Libreria Immagini</p>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-400 mb-1">Quantità Iniziale</label>
+                                        <input type="number" id="inv-admin-qty" value="0" min="0" required class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-xl text-white focus:outline-none focus:border-amber-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-400 mb-1">Deposito</label>
+                                        <select id="inv-admin-stash" required class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-xl text-white focus:outline-none focus:border-amber-500"><option value="">— Seleziona deposito —</option></select>
+                                    </div>
+                                </div>
+                                <button type="submit" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition shadow-lg">
+                                    Crea Oggetto
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="inv-content-col space-y-6 xl:col-span-2">
+                        <div class="bg-gray-800/90 backdrop-blur-sm p-6 rounded-2xl border border-gray-700 shadow-xl">
+                            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                                <h2 class="text-xl font-bold text-amber-400 flex items-center">
+                                    <i class="fa-solid fa-boxes-stacked mr-2"></i> Giacenza Depositi
+                                </h2>
+                                <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                                    <input type="text" id="inv-search-filter" placeholder="Cerca oggetto..." class="px-3 py-1.5 bg-gray-700 border border-gray-600 rounded-xl text-sm text-white focus:outline-none focus:border-amber-500 w-full sm:w-48">
+                                    <select id="inv-stash-filter" class="px-3 py-1.5 bg-gray-700 border border-gray-600 rounded-xl text-sm font-bold text-amber-400 focus:outline-none focus:border-amber-500"><option value="all">Tutti i Depositi</option></select>
+                                </div>
+                            </div>
+                            <p class="text-gray-400 text-xs mb-3 italic">Clicca sulla card per gestire prelievo/deposito veloce.</p>
+                            <div class="inv-giacenza-scroll max-h-[min(65vh,640px)] min-h-[320px] overflow-y-auto pr-2 rounded-xl border border-gray-700/50 p-3 bg-gray-900/50">
+                                <div id="inventory-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-gray-800/90 backdrop-blur-sm p-6 rounded-2xl border border-gray-700 shadow-xl">
+                            <h2 class="text-lg font-bold text-gray-300 mb-4 flex items-center">
+                                <i class="fa-solid fa-clipboard-list mr-2"></i> Registro Movimenti Recenti
+                            </h2>
+                            <div class="overflow-x-auto inv-logs-scroll max-h-[min(40vh,380px)] min-h-[180px] overflow-y-auto border border-gray-700 rounded-xl">
+                                <table class="w-full text-left text-sm border-collapse">
+                                    <thead>
+                                        <tr class="border-b border-gray-700 text-gray-400 text-xs uppercase tracking-wider sticky top-0 bg-gray-800 z-10">
+                                            <th class="p-3">Data</th>
+                                            <th class="p-3">Dipendente</th>
+                                            <th class="p-3">Azione</th>
+                                            <th class="p-3">Oggetto (Qta)</th>
+                                            <th class="p-3">Motivo</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="inventory-logs-table" class="divide-y divide-gray-700 bg-gray-850">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========== SEZIONE ADMIN / GESTIONE ========== -->
+            <section id="admin-section" class="hidden space-y-8">
+
+                <!-- Libreria Immagini PNG -->
+                <div class="bg-gray-800/95 backdrop-blur-sm p-6 rounded-2xl border border-gray-700 shadow-xl">
+                    <h3 class="text-lg font-bold text-amber-400 mb-2"><i class="fa-solid fa-images mr-2"></i> Libreria Immagini Item (PNG)</h3>
+                    <p class="text-gray-400 text-xs mb-4">Seleziona <strong class="text-amber-400">una o più PNG</strong> (max ~400 KB ciascuna). In Inventario le scegli per <strong class="text-amber-400">nome file</strong>.</p>
+                    <div class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-end mb-4">
+                        <div class="flex-1">
+                            <label class="block text-xs font-medium text-gray-400 mb-1">File PNG (selezione multipla)</label>
+                            <input type="file" id="item-image-file" accept="image/png,.png" multiple class="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-xl text-sm text-white file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-amber-500 file:text-gray-900 file:font-bold file:text-xs">
+                        </div>
+                        <button type="button" id="item-image-upload-btn" onclick="window.uploadItemImagesFromInput()" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition shadow-lg whitespace-nowrap">
+                            <i class="fa-solid fa-upload mr-1"></i> Carica PNG
+                        </button>
+                    </div>
+                    <p id="item-image-status" class="text-xs text-gray-500 mb-2 hidden"></p>
+                    <p class="text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider">Immagini caricate</p>
+                    <div id="item-images-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 max-h-[260px] overflow-y-auto pr-1">
+                        <p class="col-span-full text-xs text-gray-500 italic">Nessuna immagine caricata.</p>
+                    </div>
+                </div>
+                
+                <!-- Creazione Depositi -->
+                <div class="bg-gray-800/95 backdrop-blur-sm p-6 rounded-2xl border border-gray-700 shadow-xl">
+                    <h3 class="text-lg font-bold text-amber-400 mb-4"><i class="fa-solid fa-folder-plus mr-2"></i> Creazione Depositi</h3>
+                    <p class="text-gray-400 text-xs mb-4">Crea depositi personalizzati per l&apos;inventario della Forgia.</p>
+                    <form id="stash-form" class="space-y-3 mb-4">
+                        <div class="flex flex-col sm:flex-row gap-3">
+                            <input type="text" id="stash-name" placeholder="Es. Magazzino Armi" required class="flex-1 px-4 py-2.5 bg-gray-900 border border-gray-600 rounded-xl text-sm text-white focus:outline-none focus:border-amber-500">
+                            <button type="submit" class="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition shadow-lg whitespace-nowrap">
+                                <i class="fa-solid fa-plus mr-1"></i> Crea Deposito
+                            </button>
+                        </div>
+                    </form>
+                    <div>
+                        <p class="text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider">Depositi attivi</p>
+                        <div id="custom-stashes-list" class="space-y-2 max-h-[160px] overflow-y-auto">
+                            <p class="text-xs text-gray-500 italic">Nessun deposito personalizzato.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pannello Controllo Dipendente -->
+                <div class="bg-gray-800/95 backdrop-blur-sm p-6 rounded-2xl border-2 border-amber-500/40 shadow-2xl">
+                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                        <div>
+                            <h3 class="text-xl font-extrabold text-amber-400 tracking-wide flex items-center">
+                                <i class="fa-solid fa-user-check mr-2 text-2xl"></i> PANNELLO DI CONTROLLO SINGOLO DIPENDENTE
+                            </h3>
+                            <p class="text-gray-400 text-xs mt-1">Seleziona un dipendente per isolare guadagni, verificare pagamenti o archiviare la sua settimana.</p>
+                        </div>
+                        <div class="w-full md:w-72">
+                            <label class="block text-xs font-bold text-gray-300 uppercase mb-1 tracking-wider">Filtra Staff</label>
+                            <select id="admin-employee-filter" class="w-full px-4 py-2.5 bg-gray-900 border-2 border-amber-500 text-amber-400 font-bold rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/50">
+                                <option value="all">📊 MOSTRA TUTTO LO STAFF</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                        <div class="bg-gray-900 p-4 rounded-xl border border-gray-700 shadow-md">
+                            <p class="text-gray-400 text-xs uppercase font-medium">Entrate (Incasso Filtrato)</p>
+                            <p id="kpi-total" class="text-xl font-bold text-emerald-400 mt-1">€ 0,00</p>
+                        </div>
+                        <div class="bg-gray-900 p-4 rounded-xl border border-gray-700 shadow-md">
+                            <p class="text-gray-400 text-xs uppercase font-medium">Guadagno Forgia</p>
+                            <p id="kpi-forge" class="text-xl font-bold text-amber-400 mt-1">€ 0,00</p>
+                        </div>
+                        <div class="bg-gray-900 p-4 rounded-xl border border-gray-700 shadow-md">
+                            <p class="text-gray-400 text-xs uppercase font-medium">Spett. Staff (Stipendio)</p>
+                            <p id="kpi-stipendi" class="text-xl font-bold text-indigo-400 mt-1">€ 0,00</p>
+                        </div>
+                        <div class="bg-gray-900 p-4 rounded-xl border border-gray-700 shadow-md">
+                            <p class="text-gray-400 text-xs uppercase font-medium">Spese Totali (Filtrate)</p>
+                            <p id="kpi-expenses" class="text-xl font-bold text-red-400 mt-1">€ 0,00</p>
+                        </div>
+                        <div class="bg-gray-900 p-4 rounded-xl border border-gray-700 flex flex-col justify-center gap-2 shadow-md">
+                            <button id="archive-single-employee-btn" class="hidden w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] rounded-lg transition">
+                                <i class="fa-solid fa-folder-minus mr-1"></i> Archivia Solo Questo Dipendente
+                            </button>
+                            <button id="archive-manual-btn" class="w-full py-2 bg-red-600 hover:bg-red-700 text-white font-bold text-[11px] rounded-lg transition">
+                                <i class="fa-solid fa-box-archive mr-1"></i> Archiviazione Generale Settimana
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="single-employee-sales-card" class="hidden mt-6 bg-gray-900 p-4 rounded-xl border border-gray-700">
+                        <h4 class="text-sm font-bold text-amber-400 uppercase tracking-wide mb-3 flex items-center">
+                            <i class="fa-solid fa-receipt mr-2"></i> Dettaglio Operazioni della settimana del dipendente selezionato
+                        </h4>
+                        <div class="overflow-x-auto max-h-[140px] overflow-y-auto">
+                            <table class="w-full text-left text-xs border-collapse">
+                                <thead>
+                                    <tr class="border-b border-gray-800 text-gray-400 uppercase tracking-wider sticky top-0 bg-gray-900 z-10">
+                                        <th class="pb-2">Data</th>
+                                        <th class="pb-2">Servizio/Oggetto</th>
+                                        <th class="pb-2">Quantità</th>
+                                        <th class="pb-2">Incassato Lordo</th>
+                                        <th class="pb-2">Spettanza Dipendente</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="single-employee-sales-table" class="divide-y divide-gray-800 text-gray-300">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Catalogo Servizi -->
+                <div class="bg-gray-800/90 backdrop-blur-sm p-6 rounded-2xl border border-gray-700 shadow-xl">
+                    <h3 class="text-lg font-bold text-amber-400 mb-4"><i class="fa-solid fa-box-open mr-2"></i> Catalogo Servizi Forgia</h3>
+                    <form id="catalog-form" class="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-4">
+                        <input type="hidden" id="catalog-id">
+                        <div class="sm:col-span-2">
+                            <input type="text" id="catalog-name" placeholder="Nome Servizio" required class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-xl text-sm text-white focus:outline-none focus:border-amber-500">
+                        </div>
+                        <div>
+                            <input type="number" step="0.01" id="catalog-price" placeholder="Prezzo Tot (€)" required class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-xl text-sm text-white focus:outline-none focus:border-amber-500">
+                        </div>
+                        <div>
+                            <input type="number" step="0.01" id="catalog-cost" placeholder="Costo Forgia (€)" required class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-xl text-sm text-white focus:outline-none focus:border-amber-500">
+                        </div>
+                        <div class="sm:col-span-4">
+                            <button type="submit" id="catalog-submit-btn" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition">
+                                Aggiungi al Catalogo
+                            </button>
+                        </div>
+                    </form>
+                    <div class="max-h-[180px] overflow-y-auto border border-gray-700 rounded-xl">
+                        <table class="w-full text-left text-xs">
+                            <tbody id="catalog-table-body" class="divide-y divide-gray-700 bg-gray-850">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Gestione Dipendenti -->
+                <div class="bg-gray-800/90 backdrop-blur-sm p-6 rounded-2xl border border-gray-700 shadow-xl">
+                    <h3 class="text-lg font-bold text-amber-400 mb-4"><i class="fa-solid fa-users mr-2"></i> Gestione Dipendenti (Login + Ruoli)</h3>
+                    <p class="text-gray-400 text-xs mb-4">Crea dipendenti con codice login, password e seleziona le pagine che possono visualizzare. Solo il Gestore gestisce questi dati.</p>
+                    <form id="employee-form" class="space-y-4 mb-4">
+                        <input type="hidden" id="emp-id" value="">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-400 mb-1">Nome</label>
+                                <input type="text" id="emp-name" placeholder="Nome completo" required class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-xl text-sm text-white focus:outline-none focus:border-amber-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-400 mb-1">Grado / Ruolo</label>
+                                <input type="text" id="emp-rank" placeholder="es. Fabbro, Apprendista..." required class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-xl text-sm text-white focus:outline-none focus:border-amber-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-400 mb-1">% Personale (opz.)</label>
+                                <input type="number" id="emp-percentage" placeholder="es. 45 (default 40)" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-xl text-sm text-white focus:outline-none focus:border-amber-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-400 mb-1">Nickname / Login</label>
+                                <input type="text" id="emp-login" placeholder="nickname per accedere" required class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-xl text-sm text-white focus:outline-none focus:border-amber-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-400 mb-1">Password</label>
+                                <input type="text" id="emp-password" placeholder="Password accesso" required class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-xl text-sm text-white focus:outline-none focus:border-amber-500">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-400 mb-2">Pagine visibili (permessi)</label>
+                            <div class="flex flex-wrap gap-3">
+                                <label class="inline-flex items-center gap-2 bg-gray-900 px-3 py-2 rounded-xl border border-gray-600 cursor-pointer hover:border-amber-500">
+                                    <input type="checkbox" id="role-sales" class="rounded text-amber-500 focus:ring-amber-500" checked>
+                                    <span class="text-xs text-gray-200">Vendite</span>
+                                </label>
+                                <label class="inline-flex items-center gap-2 bg-gray-900 px-3 py-2 rounded-xl border border-gray-600 cursor-pointer hover:border-amber-500">
+                                    <input type="checkbox" id="role-inv" class="rounded text-amber-500 focus:ring-amber-500" checked>
+                                    <span class="text-xs text-gray-200">Inventario</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="flex flex-col sm:flex-row gap-2">
+                            <button type="submit" id="emp-submit-btn" class="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl transition">
+                                <i class="fa-solid fa-user-plus mr-1"></i> Registra Nuovo Dipendente
+                            </button>
+                            <button type="button" id="emp-cancel-edit-btn" class="hidden px-4 py-2.5 bg-gray-700 hover:bg-gray-600 text-gray-200 font-medium text-sm rounded-xl transition">
+                                Annulla modifica
+                            </button>
+                        </div>
+                    </form>
+                    <div class="max-h-[240px] overflow-y-auto border border-gray-700 rounded-xl">
+                        <table class="w-full text-left text-xs">
+                            <thead>
+                                <tr class="border-b border-gray-700 text-gray-400 uppercase sticky top-0 bg-gray-800 z-10">
+                                    <th class="p-2">Nome</th>
+                                    <th class="p-2">Grado</th>
+                                    <th class="p-2">Login</th>
+                                    <th class="p-2">Password</th>
+                                    <th class="p-2">%</th>
+                                    <th class="p-2">Pagine</th>
+                                    <th class="p-2 text-right">Azioni</th>
+                                </tr>
+                            </thead>
+                            <tbody id="employee-table-body" class="divide-y divide-gray-700">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Stipendi -->
+                <div class="bg-gray-800/90 backdrop-blur-sm p-6 rounded-2xl border border-gray-700 shadow-xl">
+                    <h3 class="text-lg font-bold text-amber-400 mb-4"><i class="fa-solid fa-wallet mr-2"></i> Calcolo Stipendi Correnti & Stato Pagamento Staff</h3>
+                    <div class="overflow-x-auto max-h-[180px] overflow-y-auto">
+                        <table class="w-full text-left text-sm">
+                            <thead>
+                                <tr class="border-b border-gray-700 text-gray-400 text-xs uppercase sticky top-0 bg-gray-800 z-10">
+                                    <th class="pb-2">Dipendente</th>
+                                    <th class="pb-2">N. Vendite</th>
+                                    <th class="pb-2">% Applicata</th>
+                                    <th class="pb-2">Stipendio Maturato (€)</th>
+                                    <th class="pb-2 text-right">Azione Stato Pagamento</th>
+                                </tr>
+                            </thead>
+                            <tbody id="salary-table-body" class="divide-y divide-gray-700">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Archivio storico -->
+                <div class="bg-gray-800/90 backdrop-blur-sm p-6 rounded-2xl border border-gray-700 shadow-xl">
+                    <h3 class="text-lg font-bold text-gray-400 mb-4"><i class="fa-solid fa-box-archive mr-2"></i> Archivio Storico Settimanale & Stato Pagamenti Passati</h3>
+                    <div id="archive-container" class="space-y-4 max-h-[220px] overflow-y-auto pr-1">
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <footer class="relative z-10 bg-gray-950 text-gray-400 text-xs py-6 mt-12 border-t border-gray-800">
+        <div class="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row justify-between items-center gap-4 text-center sm:text-left">
+            <div class="flex items-center space-x-2">
+                <p>&copy; 2026 <span class="text-amber-400 font-semibold tracking-wider">FORGIA DEL DANNATO</span>. Vitrio - Tutti i diritti riservati.</p>
+            </div>
+            <div class="flex space-x-6 text-gray-500">
+                <span><i class="fa-solid fa-shield-halved mr-1 text-amber-500/50"></i> Database Online</span>
+                <span><i class="fa-solid fa-clock mr-1 text-amber-500/50"></i> Gestionale Operativo</span>
+            </div>
+        </div>
+    </footer>
+
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
