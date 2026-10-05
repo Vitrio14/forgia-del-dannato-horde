@@ -28,6 +28,10 @@ let localInventoryLogs = [];
 let localStashes = {};
 let localArchive = {};
 let localItemImages = {};
+let localSettings = {
+    freeSalesEnabled: false,
+    freeSalesForgePct: 40
+};
 
 // DOM
 const loginPage = document.getElementById('login-page');
@@ -196,6 +200,10 @@ window.openSmartModal = function(type, itemId) {
         submitBtn.textContent = "Registra Vendita";
         submitBtn.className = "w-full py-3 bg-amber-500 hover:bg-amber-600 text-gray-900 font-extrabold rounded-xl transition transform active:scale-95 shadow-lg mt-4";
     } else if (type === 'sale_custom') {
+        if (!localSettings.freeSalesEnabled && userRole !== 'gestore') {
+            showToast("Le vendite libere non sono abilitate dal gestore.", "warning");
+            return;
+        }
         titleEl.innerHTML = `<i class="fa-solid fa-bolt mr-2"></i> Nuova Vendita Libera`;
         document.getElementById('smart-modal-custom-name-container').classList.remove('hidden');
         document.getElementById('smart-modal-price-container').classList.remove('hidden');
@@ -203,7 +211,12 @@ window.openSmartModal = function(type, itemId) {
         document.getElementById('smart-modal-price-label').textContent = "Prezzo base senza % (€)";
         priceInput.value = '';
         priceInput.disabled = false;
-        if (freePctInput) freePctInput.value = 40;
+        const lockedPct = (localSettings.freeSalesForgePct != null) ? localSettings.freeSalesForgePct : 40;
+        if (freePctInput) {
+            freePctInput.value = lockedPct;
+            // Solo gestore può cambiare la % al momento; staff usa quella impostata
+            freePctInput.disabled = (userRole !== 'gestore');
+        }
         submitBtn.textContent = "Registra Vendita";
         submitBtn.className = "w-full py-3 bg-amber-500 hover:bg-amber-600 text-gray-900 font-extrabold rounded-xl transition transform active:scale-95 shadow-lg mt-4";
         if (typeof updateFreeSalePreview === 'function') updateFreeSalePreview();
@@ -333,9 +346,17 @@ document.getElementById('smart-modal-form').addEventListener('submit', (e) => {
         saleData.appliedPercentage = empPct;
 
         if (type === 'sale_custom') {
+            if (!localSettings.freeSalesEnabled && userRole !== 'gestore') {
+                showToast("Le vendite libere non sono abilitate.", "warning");
+                return;
+            }
             const name = document.getElementById('smart-modal-custom-name').value.trim();
             const baseUnit = parseFloat(document.getElementById('smart-modal-price').value);
-            const freePct = parseFloat(document.getElementById('smart-modal-free-pct')?.value);
+            let freePct = parseFloat(document.getElementById('smart-modal-free-pct')?.value);
+            // Staff: forza sempre la % impostata dal gestore
+            if (userRole !== 'gestore') {
+                freePct = (localSettings.freeSalesForgePct != null) ? parseFloat(localSettings.freeSalesForgePct) : 40;
+            }
             if (!name || isNaN(baseUnit) || baseUnit < 0) {
                 showToast("Compila nome e prezzo base.", "warning");
                 return;
@@ -654,6 +675,7 @@ function refreshActiveSectionUI() {
             if (typeof renderArchive === 'function') renderArchive(localArchive);
             if (typeof renderItemImagesLibrary === 'function') renderItemImagesLibrary();
             if (typeof renderItemImageSelects === 'function') renderItemImageSelects();
+            if (typeof applySettingsToAdminUI === 'function') applySettingsToAdminUI();
             break;
         default:
             break;
@@ -768,6 +790,22 @@ function initDatabaseListeners() {
                 if (isAdminOpen() && typeof renderArchive === 'function') renderArchive(localArchive);
             });
         });
+
+        
+        db.collection('settings').doc('app').onSnapshot(doc => {
+            if (doc.exists) {
+                const d = doc.data() || {};
+                localSettings.freeSalesEnabled = !!d.freeSalesEnabled;
+                localSettings.freeSalesForgePct = (d.freeSalesForgePct != null) ? parseFloat(d.freeSalesForgePct) : 40;
+            } else {
+                localSettings.freeSalesEnabled = false;
+                localSettings.freeSalesForgePct = 40;
+            }
+            scheduleUI(function () {
+                if (typeof applySettingsToAdminUI === 'function') applySettingsToAdminUI();
+                if (isSectionVisible('sales') && typeof renderQuickSalesGrid === 'function') renderQuickSalesGrid();
+            });
+        }, err => console.error('settings listener', err));
 
         db.collection('item_images').onSnapshot(snapshot => {
             localItemImages = {};
@@ -985,13 +1023,17 @@ function renderQuickSalesGrid() {
     const grid = document.getElementById('quick-sales-grid');
     if (!grid) return;
     grid.innerHTML = '';
-    // Card vendita libera
-    grid.innerHTML += `
-        <div onclick="openSmartModal('sale_custom')" class="bg-gray-900 border border-dashed border-amber-500/50 rounded-xl p-4 cursor-pointer hover:border-amber-500 hover:bg-gray-800 transition flex flex-col items-center justify-center min-h-[100px] text-center">
-            <i class="fa-solid fa-plus text-2xl text-amber-400 mb-2"></i>
-            <span class="text-xs font-bold text-amber-400">Vendita Libera</span>
-        </div>
-    `;
+    // Vendita libera solo se abilitata dal gestore (o se sei gestore)
+    if (localSettings.freeSalesEnabled || userRole === 'gestore') {
+        const pctLabel = (localSettings.freeSalesForgePct != null) ? localSettings.freeSalesForgePct : 40;
+        grid.innerHTML += `
+            <div onclick="openSmartModal('sale_custom')" class="bg-gray-900 border border-dashed border-amber-500/50 rounded-xl p-4 cursor-pointer hover:border-amber-500 hover:bg-gray-800 transition flex flex-col items-center justify-center min-h-[100px] text-center">
+                <i class="fa-solid fa-plus text-2xl text-amber-400 mb-2"></i>
+                <span class="text-xs font-bold text-amber-400">Vendita Libera</span>
+                <span class="text-[10px] text-gray-500 mt-1">% Forgia: ${pctLabel}</span>
+            </div>
+        `;
+    }
     Object.keys(localCatalog).forEach(id => {
         const item = localCatalog[id];
         grid.innerHTML += `
@@ -1001,6 +1043,9 @@ function renderQuickSalesGrid() {
             </div>
         `;
     });
+    if (Object.keys(localCatalog).length === 0 && !localSettings.freeSalesEnabled && userRole !== 'gestore') {
+        grid.innerHTML = `<div class="col-span-full text-center py-6 text-gray-500 text-sm">Nessun servizio in catalogo. Il gestore deve aggiungerli in Gestione.</div>`;
+    }
 }
 
 function renderSalesTable() {
@@ -1008,14 +1053,18 @@ function renderSalesTable() {
     if (!tbody) return;
     tbody.innerHTML = '';
     const filterVal = document.getElementById('sales-employee-filter')?.value || 'all';
+    const isGestore = userRole === 'gestore';
     let sales = Object.keys(localSales).map(k => ({ id: k, ...localSales[k] }));
     sales.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
     if (filterVal !== 'all') sales = sales.filter(s => s.employeeKey === filterVal);
     if (sales.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-gray-500 text-xs">Nessuna vendita corrente.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-gray-500 text-xs">Nessuna vendita corrente.</td></tr>`;
         return;
     }
     sales.forEach(sale => {
+        const delBtn = isGestore
+            ? `<button onclick="window.deleteSale('${sale.id}')" class="p-1.5 bg-red-600/20 text-red-400 rounded-lg hover:bg-red-600 hover:text-white transition" title="Elimina vendita"><i class="fa-solid fa-trash text-[10px]"></i></button>`
+            : '';
         tbody.innerHTML += `
             <tr class="hover:bg-gray-750/50 border-b border-gray-700">
                 <td class="py-2 text-xs text-gray-400">${sale.dateString || '-'}</td>
@@ -1024,9 +1073,21 @@ function renderSalesTable() {
                 <td class="py-2 text-emerald-400 font-semibold">${formatValuta(sale.totalPrice)}</td>
                 <td class="py-2 text-amber-400 font-semibold">${formatValuta(sale.forgeGain)}</td>
                 <td class="py-2 text-indigo-400 font-bold">${formatValuta(sale.employeeGain)}</td>
+                <td class="py-2 text-right">${delBtn}</td>
             </tr>
         `;
     });
+}
+
+window.deleteSale = function(saleId) {
+    if (userRole !== 'gestore') return;
+    const sale = localSales[saleId];
+    const label = sale ? (sale.serviceName || 'questa vendita') : 'questa vendita';
+    showConfirmModal("Elimina vendita", `Eliminare definitivamente "${label}"?`, () => {
+        db.collection('current_sales').doc(saleId).delete()
+            .then(() => showToast("Vendita eliminata.", "info"))
+            .catch(err => showToast(err.message, "error"));
+    }, true);
 }
 
 document.getElementById('sales-employee-filter')?.addEventListener('change', renderSalesTable);
@@ -1064,6 +1125,39 @@ function renderSalesArchiveWindow(archiveList) {
 document.getElementById('archive-window-employee-filter')?.addEventListener('change', () => renderSalesArchiveWindow(localArchive));
 
 // --- CATALOGO ---
+
+// --- IMPOSTAZIONI APP (vendite libere) ---
+function applySettingsToAdminUI() {
+    const en = document.getElementById('settings-free-sales-enabled');
+    const pct = document.getElementById('settings-free-sales-pct');
+    if (en) en.checked = !!localSettings.freeSalesEnabled;
+    if (pct) pct.value = (localSettings.freeSalesForgePct != null) ? localSettings.freeSalesForgePct : 40;
+}
+
+document.getElementById('settings-save-btn')?.addEventListener('click', () => {
+    if (userRole !== 'gestore') {
+        showToast("Solo il gestore può modificare le impostazioni.", "error");
+        return;
+    }
+    const enabled = !!document.getElementById('settings-free-sales-enabled')?.checked;
+    let pct = parseFloat(document.getElementById('settings-free-sales-pct')?.value);
+    if (isNaN(pct) || pct < 0) pct = 40;
+    const status = document.getElementById('settings-status');
+    db.collection('settings').doc('app').set({
+        freeSalesEnabled: enabled,
+        freeSalesForgePct: pct,
+        updatedAt: Date.now()
+    }, { merge: true }).then(() => {
+        if (status) {
+            status.classList.remove('hidden');
+            status.textContent = enabled
+                ? `Vendite libere ATTIVE · % Forgia: ${pct}`
+                : 'Vendite libere DISATTIVATE (solo catalogo)';
+        }
+        showToast("Impostazioni salvate.", "success");
+    }).catch(err => showToast(err.message, "error"));
+});
+
 function renderCatalog() {
     const tbody = document.getElementById('catalog-table-body');
     if (!tbody) return;
@@ -1171,8 +1265,9 @@ function renderInventoryLogs() {
     const tbody = document.getElementById('inventory-logs-table');
     if (!tbody) return;
     tbody.innerHTML = '';
+    const isGestore = userRole === 'gestore';
     if (localInventoryLogs.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" class="text-center py-4 text-gray-500 text-xs">Nessun movimento.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-gray-500 text-xs">Nessun movimento.</td></tr>`;
         return;
     }
     localInventoryLogs.forEach(log => {
@@ -1180,6 +1275,9 @@ function renderInventoryLogs() {
         const badge = isDeposit
             ? `<span class="text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded text-xs font-bold">📥 Deposita</span>`
             : `<span class="text-amber-500 bg-amber-500/10 px-2 py-1 rounded text-xs font-bold">📤 Preleva</span>`;
+        const delBtn = isGestore
+            ? `<button onclick="window.deleteInventoryLog('${log.id}')" class="p-1.5 bg-red-600/20 text-red-400 rounded-lg hover:bg-red-600 hover:text-white transition" title="Elimina log"><i class="fa-solid fa-trash text-[10px]"></i></button>`
+            : '';
         tbody.innerHTML += `
             <tr class="hover:bg-gray-750/50 border-b border-gray-700">
                 <td class="p-3 text-xs text-gray-400">${log.dateString}</td>
@@ -1187,9 +1285,19 @@ function renderInventoryLogs() {
                 <td class="p-3">${badge}</td>
                 <td class="p-3 text-gray-300 text-xs"><b>${log.itemName}</b> (x${log.quantity})</td>
                 <td class="p-3 text-gray-400 text-xs italic truncate max-w-[150px]">${log.reason || '-'}</td>
+                <td class="p-3 text-right">${delBtn}</td>
             </tr>
         `;
     });
+}
+
+window.deleteInventoryLog = function(logId) {
+    if (userRole !== 'gestore') return;
+    showConfirmModal("Elimina movimento", "Eliminare questo log di inventario?", () => {
+        db.collection('inventory_logs').doc(logId).delete()
+            .then(() => showToast("Log eliminato.", "info"))
+            .catch(err => showToast(err.message, "error"));
+    }, true);
 }
 
 document.getElementById('inventory-admin-form')?.addEventListener('submit', (e) => {
