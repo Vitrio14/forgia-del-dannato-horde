@@ -349,18 +349,24 @@
             <!-- ========== SEZIONE ADMIN / GESTIONE ========== -->
             <section id="admin-section" class="hidden space-y-8">
 
-                <!-- Libreria Immagini PNG -->
+                                <!-- Libreria Immagini Item -->
                 <div class="bg-gray-800/95 backdrop-blur-sm p-6 rounded-2xl border border-gray-700 shadow-xl">
-                    <h3 class="text-lg font-bold text-amber-400 mb-2"><i class="fa-solid fa-images mr-2"></i> Libreria Immagini Item (PNG)</h3>
-                    <p class="text-gray-400 text-xs mb-4">Seleziona <strong class="text-amber-400">una o più PNG</strong> (max ~400 KB ciascuna). In Inventario le scegli per <strong class="text-amber-400">nome file</strong>.</p>
-                    <div class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-end mb-4">
+                    <h3 class="text-lg font-bold text-amber-400 mb-2"><i class="fa-solid fa-images mr-2"></i> Libreria Immagini Item</h3>
+                    <p class="text-gray-400 text-xs mb-4">Carica <strong class="text-amber-400">PNG/JPG</strong>: vengono <strong class="text-emerald-400">compresse automaticamente</strong> (max ~256px, JPEG leggero) per non far lagare il sito. In Inventario le scegli per <strong class="text-amber-400">nome file</strong>.</p>
+                    <div class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-end mb-3">
                         <div class="flex-1">
-                            <label class="block text-xs font-medium text-gray-400 mb-1">File PNG (selezione multipla)</label>
-                            <input type="file" id="item-image-file" accept="image/png,.png" multiple class="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-xl text-sm text-white file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-amber-500 file:text-gray-900 file:font-bold file:text-xs">
+                            <label class="block text-xs font-medium text-gray-400 mb-1">File immagine (selezione multipla)</label>
+                            <input type="file" id="item-image-file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" multiple class="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-xl text-sm text-white file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-amber-500 file:text-gray-900 file:font-bold file:text-xs">
                         </div>
                         <button type="button" id="item-image-upload-btn" onclick="window.uploadItemImagesFromInput()" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition shadow-lg whitespace-nowrap">
-                            <i class="fa-solid fa-upload mr-1"></i> Carica PNG
+                            <i class="fa-solid fa-upload mr-1"></i> Carica e comprimi
                         </button>
+                    </div>
+                    <div class="flex flex-col sm:flex-row gap-2 mb-3">
+                        <button type="button" id="item-image-optimize-btn" onclick="window.optimizeExistingItemImages()" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl transition shadow-lg whitespace-nowrap">
+                            <i class="fa-solid fa-compress mr-1"></i> Ottimizza immagini esistenti + aggiorna item
+                        </button>
+                        <p class="text-[11px] text-gray-500 self-center">Riduce le immagini già caricate e riscrive gli oggetti in inventario collegati. Consigliato se il sito lagga.</p>
                     </div>
                     <p id="item-image-status" class="text-xs text-gray-500 mb-2 hidden"></p>
                     <p class="text-xs font-bold text-gray-400 uppercase mb-2 tracking-wider">Immagini caricate</p>
@@ -368,9 +374,10 @@
                         <p class="col-span-full text-xs text-gray-500 italic">Nessuna immagine caricata.</p>
                     </div>
                 </div>
+
                 
 
-                <!-- Impostazioni Vendite Libere -->
+<!-- Impostazioni Vendite Libere -->
                 <div class="bg-gray-800/95 backdrop-blur-sm p-6 rounded-2xl border border-gray-700 shadow-xl">
                     <h3 class="text-lg font-bold text-amber-400 mb-2"><i class="fa-solid fa-sliders mr-2"></i> Vendite Libere (Gestore)</h3>
                     <p class="text-gray-400 text-xs mb-4">Di default lo staff vende solo i servizi del catalogo. Puoi abilitare le vendite libere e fissare la % guadagno Forgia applicata automaticamente.</p>

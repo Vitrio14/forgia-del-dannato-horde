@@ -361,3 +361,30 @@ h1, h2, h3 { letter-spacing: 0.02em; }
     max-height: min(40vh, 380px) !important;
     min-height: 180px !important;
 }
+
+
+/* ===== Performance ===== */
+#inventory-grid > div,
+#item-images-grid > div {
+    contain: layout style paint;
+}
+#inventory-grid img,
+#item-images-grid img {
+    content-visibility: auto;
+    max-width: 100%;
+    height: auto;
+}
+#inventory-grid,
+#item-images-grid,
+#quick-sales-grid {
+    contain: layout style;
+}
+.inv-giacenza-scroll,
+.inv-logs-scroll {
+    content-visibility: auto;
+}
+#sales-section.hidden,
+#inventory-section.hidden,
+#admin-section.hidden {
+    content-visibility: hidden;
+}

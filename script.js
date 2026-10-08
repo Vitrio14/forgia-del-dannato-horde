@@ -142,8 +142,23 @@ function closeConfirmModal() {
 
 document.getElementById('modal-cancel-btn').addEventListener('click', closeConfirmModal);
 document.getElementById('modal-confirm-btn').addEventListener('click', () => {
-    if (modalCallback) modalCallback();
+    const cb = modalCallback;
+    modalCallback = null;
     closeConfirmModal();
+    if (typeof cb === 'function') {
+        try {
+            const result = cb();
+            if (result && typeof result.then === 'function') {
+                result.catch(function (err) {
+                    console.error('confirm action error', err);
+                    showToast('Errore: ' + (err && err.message ? err.message : err), 'error');
+                });
+            }
+        } catch (err) {
+            console.error('confirm action error', err);
+            showToast('Errore: ' + (err && err.message ? err.message : err), 'error');
+        }
+    }
 });
 
 // --- SMART MODAL ---
@@ -638,20 +653,29 @@ function isSectionVisible(section) {
 function isAdminOpen() {
     return currentSectionId === 'admin' && userRole === 'gestore';
 }
+let _uiQueue = [];
+let _uiScheduled = false;
 function scheduleUI(fn, delay) {
-    const run = function () {
-        try { fn(); } catch (e) { console.error(e); }
-    };
-    if (delay && delay > 0) {
-        setTimeout(function () {
-            if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 600 });
-            else run();
-        }, delay);
-    } else if (typeof requestIdleCallback === 'function') {
-        requestIdleCallback(run, { timeout: 400 });
-    } else {
-        setTimeout(run, 0);
-    }
+    if (typeof fn !== 'function') return;
+    _uiQueue.push(fn);
+    if (_uiScheduled) return;
+    _uiScheduled = true;
+    const wait = (delay && delay > 0) ? delay : 40;
+    setTimeout(function () {
+        const batch = _uiQueue.slice();
+        _uiQueue = [];
+        _uiScheduled = false;
+        const run = function () {
+            const seen = new Set();
+            batch.forEach(function (f) {
+                if (seen.has(f)) return;
+                seen.add(f);
+                try { f(); } catch (e) { console.error(e); }
+            });
+        };
+        if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 500 });
+        else run();
+    }, wait);
 }
 
 function refreshActiveSectionUI() {
@@ -889,15 +913,71 @@ document.getElementById('stash-form')?.addEventListener('submit', (e) => {
         .catch(err => showToast(err.message, "error"));
 });
 
-// --- ITEM IMAGES ---
+// --- ITEM IMAGES (compressione + ottimizzazione) ---
+const MAX_ITEM_IMAGE_BYTES = 400 * 1024;
+const ITEM_IMAGE_MAX_SIDE = 256;
+const ITEM_IMAGE_JPEG_QUALITY = 0.72;
+const ITEM_IMAGE_SKIP_IF_UNDER = 45 * 1024;
+
+function compressImageSource(source, maxSide, quality) {
+    maxSide = maxSide || ITEM_IMAGE_MAX_SIDE;
+    quality = quality == null ? ITEM_IMAGE_JPEG_QUALITY : quality;
+    return new Promise(function (resolve, reject) {
+        var img = new Image();
+        var objectUrl = null;
+        img.onload = function () {
+            try {
+                if (objectUrl) URL.revokeObjectURL(objectUrl);
+                var w = img.naturalWidth || img.width;
+                var h = img.naturalHeight || img.height;
+                if (!w || !h) { reject(new Error('Dimensioni immagine non valide')); return; }
+                var scale = 1;
+                if (w > maxSide || h > maxSide) scale = maxSide / Math.max(w, h);
+                var nw = Math.max(1, Math.round(w * scale));
+                var nh = Math.max(1, Math.round(h * scale));
+                var canvas = document.createElement('canvas');
+                canvas.width = nw; canvas.height = nh;
+                var ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#1a1a20';
+                ctx.fillRect(0, 0, nw, nh);
+                ctx.drawImage(img, 0, 0, nw, nh);
+                var dataUrl = canvas.toDataURL('image/jpeg', quality);
+                var b64 = dataUrl.indexOf(',') >= 0 ? dataUrl.split(',')[1] : dataUrl;
+                var sizeApprox = Math.round((b64.length * 3) / 4);
+                resolve({ dataUrl: dataUrl, sizeApprox: sizeApprox, width: nw, height: nh });
+            } catch (e) {
+                if (objectUrl) URL.revokeObjectURL(objectUrl);
+                reject(e);
+            }
+        };
+        img.onerror = function () {
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+            reject(new Error('Impossibile caricare immagine'));
+        };
+        if (typeof source === 'string') img.src = source;
+        else if (source && (source instanceof Blob || source instanceof File)) {
+            objectUrl = URL.createObjectURL(source);
+            img.src = objectUrl;
+        } else reject(new Error('Sorgente immagine non supportata'));
+    });
+}
+
+function estimateDataUrlBytes(dataUrl) {
+    if (!dataUrl || typeof dataUrl !== 'string') return 0;
+    var b64 = dataUrl.indexOf(',') >= 0 ? dataUrl.split(',')[1] : dataUrl;
+    return Math.round((b64.length * 3) / 4);
+}
+
 function renderItemImageSelects() {
     const sel = document.getElementById('inv-admin-img');
     if (!sel) return;
     const v = sel.value;
     let opts = '<option value="">— Nessuna / placeholder —</option>';
-    Object.keys(localItemImages).forEach(id => {
+    Object.keys(localItemImages).sort(function (a, b) {
+        return (localItemImages[a].fileName || '').localeCompare(localItemImages[b].fileName || '', undefined, { sensitivity: 'base' });
+    }).forEach(id => {
         const img = localItemImages[id];
-        opts += `<option value="${id}">${img.fileName || id}</option>`;
+        opts += '<option value="' + id + '">' + (img.fileName || id) + '</option>';
     });
     sel.innerHTML = opts;
     if (v && [...sel.options].some(o => o.value === v)) sel.value = v;
@@ -911,74 +991,249 @@ function renderItemImagesLibrary() {
         grid.innerHTML = '<p class="col-span-full text-xs text-gray-500 italic">Nessuna immagine caricata.</p>';
         return;
     }
-    grid.innerHTML = '';
-    keys.forEach(id => {
-        const img = localItemImages[id];
-        grid.innerHTML += `
-            <div class="relative bg-gray-900 rounded-xl border border-gray-700 overflow-hidden p-2 group">
-                <img src="${img.dataUrl}" alt="${img.fileName}" class="w-full h-20 object-contain">
-                <p class="text-[10px] text-gray-400 truncate mt-1">${img.fileName || ''}</p>
-                <button onclick="window.deleteItemImage('${id}')" class="absolute top-1 right-1 p-1 bg-red-600/90 text-white rounded opacity-0 group-hover:opacity-100 transition text-xs">
-                    <i class="fa-solid fa-trash"></i>
-                </button>
-            </div>
-        `;
+    keys.sort(function (a, b) {
+        return (localItemImages[b].createdAt || localItemImages[b].uploadedAt || 0) - (localItemImages[a].createdAt || localItemImages[a].uploadedAt || 0);
     });
+    const frag = document.createDocumentFragment();
+    keys.forEach(function (id) {
+        const img = localItemImages[id];
+        const name = img.fileName || 'file.jpg';
+        const bytes = img.size || estimateDataUrlBytes(img.dataUrl);
+        const kbLabel = bytes ? (Math.round(bytes / 1024) + ' KB') : '';
+        const card = document.createElement('div');
+        card.className = 'relative bg-gray-900 rounded-xl border border-gray-700 overflow-hidden p-2 group';
+        card.innerHTML =
+            '<img src="' + (img.dataUrl || '') + '" alt="" loading="lazy" decoding="async" class="w-full h-20 object-contain">' +
+            '<p class="text-[10px] text-amber-400 font-mono truncate mt-1">' + name + '</p>' +
+            (kbLabel ? '<p class="text-[10px] text-gray-500">' + kbLabel + '</p>' : '') +
+            '<button type="button" class="absolute top-1 right-1 p-1 bg-red-600/90 text-white rounded opacity-0 group-hover:opacity-100 transition text-xs" title="Elimina"><i class="fa-solid fa-trash"></i></button>';
+        card.querySelector('button').addEventListener('click', function () { window.deleteItemImage(id); });
+        frag.appendChild(card);
+    });
+    grid.innerHTML = '';
+    grid.appendChild(frag);
 }
 
 window.deleteItemImage = function(id) {
-    showConfirmModal("Elimina Immagine", "Rimuovere questa immagine dalla libreria?", () => {
+    showConfirmModal("Elimina Immagine", "Rimuovere questa immagine dalla libreria?", function () {
         db.collection('item_images').doc(id).delete()
-            .then(() => showToast("Immagine rimossa.", "info"))
-            .catch(err => showToast(err.message, "error"));
+            .then(function () { showToast("Immagine rimossa.", "info"); })
+            .catch(function (err) { showToast(err.message, "error"); });
     }, true);
 };
 
-window.uploadItemImagesFromInput = async function() {
-    const input = document.getElementById('item-image-file');
-    const status = document.getElementById('item-image-status');
-    if (!input || !input.files || input.files.length === 0) {
-        showToast("Seleziona almeno un file PNG.", "warning");
-        return;
-    }
-    const files = Array.from(input.files);
-    let ok = 0, fail = 0;
-    if (status) {
-        status.classList.remove('hidden');
-        status.textContent = `Caricamento di ${files.length} file...`;
-    }
-    for (const file of files) {
-        if (file.type !== 'image/png' && !file.name.toLowerCase().endsWith('.png')) {
-            fail++;
-            continue;
+window.uploadItemImagesFromInput = async function uploadItemImagesFromInput() {
+    try {
+        if (userRole !== 'gestore') {
+            showToast('Solo il gestore può caricare immagini.', 'error');
+            return;
         }
-        if (file.size > 400 * 1024) {
-            showToast(`${file.name} troppo grande (max 400KB).`, "warning");
-            fail++;
-            continue;
+        var fileInput = document.getElementById('item-image-file');
+        var files = fileInput && fileInput.files ? Array.from(fileInput.files) : [];
+        if (files.length === 0) {
+            showToast('Seleziona uno o più file immagine (PNG/JPG).', 'warning');
+            return;
         }
-        try {
-            const dataUrl = await new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result);
-                reader.onerror = reject;
-                reader.readAsDataURL(file);
-            });
-            await db.collection('item_images').add({
-                fileName: file.name,
-                dataUrl,
-                uploadedAt: Date.now()
-            });
-            ok++;
-        } catch (err) {
-            fail++;
-            console.error(err);
+        var btn = document.getElementById('item-image-upload-btn');
+        var statusEl = document.getElementById('item-image-status');
+        var prevHtml = btn ? btn.innerHTML : '';
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Comprimi e carico...'; }
+        if (statusEl) { statusEl.classList.remove('hidden'); statusEl.textContent = 'Compressione e caricamento...'; }
+        var ok = 0, skip = 0, fail = 0;
+        var existingNames = new Set(Object.values(localItemImages).map(function (i) { return (i.fileName || '').toLowerCase(); }));
+        for (var i = 0; i < files.length; i++) {
+            var file = files[i];
+            if (btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> ' + (i + 1) + '/' + files.length;
+            if (statusEl) statusEl.textContent = 'Comprimo ' + (i + 1) + ' di ' + files.length + ': ' + file.name;
+            var isImg = (file.type && file.type.indexOf('image/') === 0) || /\.(png|jpe?g|webp|gif)$/i.test(file.name);
+            if (!isImg) { skip++; continue; }
+            if (file.size > 8 * 1024 * 1024) { showToast('"' + file.name + '" troppo grande (max 8 MB).', 'warning'); skip++; continue; }
+            var baseName = file.name.replace(/\.(png|jpe?g|webp|gif)$/i, '').replace(/[^\w.\-()+ ]+/g, '_') + '.jpg';
+            if (existingNames.has(baseName.toLowerCase()) || existingNames.has(file.name.toLowerCase())) {
+                showToast('"' + baseName + '" già in libreria, saltato.', 'info'); skip++; continue;
+            }
+            try {
+                var compressed = await compressImageSource(file, ITEM_IMAGE_MAX_SIDE, ITEM_IMAGE_JPEG_QUALITY);
+                if (compressed.sizeApprox > MAX_ITEM_IMAGE_BYTES) compressed = await compressImageSource(file, 192, 0.55);
+                if (compressed.sizeApprox > MAX_ITEM_IMAGE_BYTES) {
+                    showToast('"' + file.name + '" ancora troppo grande dopo compressione.', 'warning'); skip++; continue;
+                }
+                await db.collection('item_images').add({
+                    fileName: baseName, dataUrl: compressed.dataUrl, size: compressed.sizeApprox,
+                    width: compressed.width, height: compressed.height, optimized: true,
+                    createdAt: Date.now(), uploadedAt: Date.now()
+                });
+                existingNames.add(baseName.toLowerCase());
+                ok++;
+            } catch (err) {
+                fail++; console.error(err);
+                var msg = (err && err.message) ? err.message : String(err);
+                if (msg.indexOf('permission') !== -1 || (err && err.code === 'permission-denied'))
+                    showToast('Permesso negato su item_images. Accedi come gestore.', 'error');
+                else showToast('Errore su "' + file.name + '": ' + msg, 'error');
+            }
         }
+        if (fileInput) fileInput.value = '';
+        if (btn) { btn.disabled = false; btn.innerHTML = prevHtml; }
+        if (statusEl) statusEl.textContent = ok > 0 ? ('Completato: ' + ok + ' caricate (comresse)' + (skip ? ', ' + skip + ' saltate' : '') + '.') : 'Nessuna immagine nuova caricata.';
+        if (ok > 0) showToast('Caricate ' + ok + ' immagini ottimizzate' + (skip ? ' (' + skip + ' saltate)' : '') + '.', 'success');
+        else if (skip > 0 && fail === 0) showToast('Nessuna nuova immagine (già presenti o non valide).', 'warning');
+        else if (fail > 0) showToast('Caricamento fallito. Vedi console (F12).', 'error');
+    } catch (err) {
+        console.error('uploadItemImagesFromInput', err);
+        showToast('Errore upload: ' + ((err && err.message) || err), 'error');
+        var btn2 = document.getElementById('item-image-upload-btn');
+        if (btn2) { btn2.disabled = false; btn2.innerHTML = '<i class="fa-solid fa-upload mr-1"></i> Carica immagini'; }
     }
-    if (status) status.textContent = `Caricate: ${ok}${fail ? `, fallite: ${fail}` : ''}`;
-    input.value = '';
-    showToast(`Caricate ${ok} immagini.`, ok ? "success" : "warning");
 };
+
+window.optimizeExistingItemImages = async function optimizeExistingItemImages() {
+    var statusEl = document.getElementById('item-image-status');
+    var btn = document.getElementById('item-image-optimize-btn');
+    try {
+        if (statusEl) { statusEl.classList.remove('hidden'); statusEl.textContent = 'Preparazione ottimizzazione...'; }
+        showToast('Avvio ottimizzazione immagini...', 'info');
+        if (userRole !== 'gestore') {
+            showToast('Solo il gestore può ottimizzare le immagini.', 'error');
+            if (statusEl) statusEl.textContent = 'Errore: non sei loggato come gestore.';
+            return;
+        }
+        if (!auth.currentUser) {
+            showToast('Sessione gestore non attiva. Rieffettua il login gestore.', 'error');
+            if (statusEl) statusEl.textContent = 'Errore: auth gestore assente.';
+            return;
+        }
+        var imagesMap = {};
+        var ids = Object.keys(localItemImages || {});
+        if (ids.length === 0) {
+            if (statusEl) statusEl.textContent = 'Carico libreria da Firestore...';
+            try {
+                var snap = await db.collection('item_images').get();
+                snap.forEach(function (doc) { imagesMap[doc.id] = doc.data(); });
+                ids = Object.keys(imagesMap);
+            } catch (errLoad) {
+                console.error(errLoad);
+                var m = (errLoad && errLoad.message) ? errLoad.message : String(errLoad);
+                showToast('Impossibile leggere item_images: ' + m, 'error');
+                if (statusEl) statusEl.textContent = 'Errore lettura: ' + m;
+                return;
+            }
+        } else {
+            ids.forEach(function (id) { imagesMap[id] = localItemImages[id]; });
+        }
+        if (ids.length === 0) {
+            showToast('Nessuna immagine in libreria da ottimizzare.', 'warning');
+            if (statusEl) statusEl.textContent = 'Libreria vuota.';
+            return;
+        }
+        showConfirmModal(
+            'Ottimizza immagini esistenti',
+            'Comprimerò fino a ' + ids.length + ' immagini (max ' + ITEM_IMAGE_MAX_SIDE + 'px, JPEG) e aggiornerò gli oggetti in inventario. Continuare?',
+            function () {
+                (async function runOptimize() {
+                    var prevHtml = btn ? btn.innerHTML : '';
+                    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Ottimizzo...'; }
+                    if (statusEl) { statusEl.classList.remove('hidden'); statusEl.textContent = 'Ottimizzazione in corso...'; }
+                    var done = 0, skipped = 0, failed = 0, bytesSaved = 0;
+                    var mapOldToNew = {};
+                    var firstPermError = null;
+                    for (var i = 0; i < ids.length; i++) {
+                        var id = ids[i];
+                        var rec = imagesMap[id];
+                        if (!rec || !rec.dataUrl) { skipped++; continue; }
+                        if (statusEl) statusEl.textContent = 'Ottimizzo ' + (i + 1) + '/' + ids.length + ': ' + (rec.fileName || id);
+                        if (btn) btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> ' + (i + 1) + '/' + ids.length;
+                        var oldSize = rec.size || estimateDataUrlBytes(rec.dataUrl);
+                        if (rec.optimized && oldSize > 0 && oldSize < ITEM_IMAGE_SKIP_IF_UNDER) { skipped++; continue; }
+                        try {
+                            var out = await compressImageSource(rec.dataUrl, ITEM_IMAGE_MAX_SIDE, ITEM_IMAGE_JPEG_QUALITY);
+                            if (out.sizeApprox >= oldSize * 0.95 && oldSize < MAX_ITEM_IMAGE_BYTES) {
+                                if (!rec.optimized) await db.collection('item_images').doc(id).set({ optimized: true, size: oldSize }, { merge: true });
+                                skipped++; continue;
+                            }
+                            var newFileName = (rec.fileName || 'img').replace(/\.(png|jpe?g|webp|gif)$/i, '') + '.jpg';
+                            await db.collection('item_images').doc(id).set({
+                                fileName: newFileName, dataUrl: out.dataUrl, size: out.sizeApprox,
+                                width: out.width, height: out.height, optimized: true, optimizedAt: Date.now()
+                            }, { merge: true });
+                            mapOldToNew[rec.dataUrl] = out.dataUrl;
+                            mapOldToNew['fn:' + (rec.fileName || '').toLowerCase()] = out.dataUrl;
+                            mapOldToNew['fn:' + newFileName.toLowerCase()] = out.dataUrl;
+                            bytesSaved += Math.max(0, oldSize - out.sizeApprox);
+                            done++;
+                        } catch (err) {
+                            console.error('optimize image', id, err);
+                            failed++;
+                            var em = (err && (err.code || err.message)) ? String(err.code || err.message) : String(err);
+                            if (!firstPermError && em.toLowerCase().indexOf('permission') !== -1) firstPermError = em;
+                        }
+                        await new Promise(function (r) { setTimeout(r, 20); });
+                    }
+                    function resolveNewUrl(d) {
+                        if (d.imageUrl && mapOldToNew[d.imageUrl]) return mapOldToNew[d.imageUrl];
+                        if (d.imageFileName) {
+                            var fn = String(d.imageFileName).toLowerCase();
+                            if (mapOldToNew['fn:' + fn]) return mapOldToNew['fn:' + fn];
+                            var base = fn.replace(/\.(png|jpe?g|webp|gif)$/i, '');
+                            if (mapOldToNew['fn:' + base + '.jpg']) return mapOldToNew['fn:' + base + '.jpg'];
+                            if (mapOldToNew['fn:' + base + '.png']) return mapOldToNew['fn:' + base + '.png'];
+                        }
+                        return null;
+                    }
+                    async function commitInChunks(updates) {
+                        for (var j = 0; j < updates.length; j += 400) {
+                            var slice = updates.slice(j, j + 400);
+                            var b = db.batch();
+                            slice.forEach(function (u) { b.update(u.ref, u.patch); });
+                            await b.commit();
+                        }
+                    }
+                    var invUpdated = 0;
+                    try {
+                        var invSnap = await db.collection('inventory_items').get();
+                        var updates = [];
+                        invSnap.forEach(function (doc) {
+                            var d = doc.data() || {};
+                            var newUrl = resolveNewUrl(d);
+                            if (newUrl) {
+                                var patch = { imageUrl: newUrl };
+                                if (d.imageFileName) patch.imageFileName = String(d.imageFileName).replace(/\.(png|jpe?g|webp|gif)$/i, '') + '.jpg';
+                                updates.push({ ref: doc.ref, patch: patch });
+                                invUpdated++;
+                            }
+                        });
+                        if (updates.length) await commitInChunks(updates);
+                    } catch (errInv) { console.warn('update inventory after optimize', errInv); }
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.innerHTML = prevHtml || '<i class="fa-solid fa-compress mr-1"></i> Ottimizza immagini esistenti + aggiorna item';
+                    }
+                    var summary = 'Fatto: ' + done + ' ottimizzate, ' + skipped + ' già ok, ' + failed + ' errori. Item aggiornati: ' + invUpdated + '. Risparmiati ~' + Math.round(bytesSaved / 1024) + ' KB.';
+                    if (firstPermError) summary += ' | PERMESSO NEGATO su item_images.';
+                    if (statusEl) statusEl.textContent = summary;
+                    if (firstPermError) showToast('Permesso negato su item_images. Login gestore obbligatorio.', 'error');
+                    else showToast('Ottimizzazione: ' + done + ' immagini · ~' + Math.round(bytesSaved / 1024) + ' KB · ' + invUpdated + ' item', failed ? 'warning' : 'success');
+                })().catch(function (err) {
+                    console.error('runOptimize', err);
+                    showToast('Errore ottimizzazione: ' + (err && err.message ? err.message : err), 'error');
+                    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-compress mr-1"></i> Ottimizza immagini esistenti + aggiorna item'; }
+                    if (statusEl) statusEl.textContent = 'Errore: ' + (err && err.message ? err.message : err);
+                });
+            },
+            false
+        );
+    } catch (err) {
+        console.error('optimizeExistingItemImages', err);
+        showToast('Errore: ' + (err && err.message ? err.message : err), 'error');
+        if (statusEl) statusEl.textContent = 'Errore: ' + (err && err.message ? err.message : err);
+    }
+};
+
+document.getElementById('item-image-optimize-btn')?.addEventListener('click', function (e) {
+    e.preventDefault();
+    if (typeof window.optimizeExistingItemImages === 'function') window.optimizeExistingItemImages();
+    else showToast('Funzione non caricata. Ricarica con Ctrl+F5.', 'error');
+});
 
 // --- DROPDOWNS EMPLOYEE ---
 function renderAllEmployeeDropdowns() {
@@ -1224,41 +1479,54 @@ window.deleteCatalogItem = function(key) {
 };
 
 // --- INVENTARIO ---
-document.getElementById('inv-search-filter')?.addEventListener('input', renderInventoryGrid);
-document.getElementById('inv-stash-filter')?.addEventListener('change', renderInventoryGrid);
+(function () {
+    let invSearchTimer = null;
+    document.getElementById('inv-search-filter')?.addEventListener('input', function () {
+        clearTimeout(invSearchTimer);
+        invSearchTimer = setTimeout(function () {
+            if (typeof renderInventoryGrid === 'function') renderInventoryGrid();
+        }, 180);
+    });
+    document.getElementById('inv-stash-filter')?.addEventListener('change', function () {
+        if (typeof renderInventoryGrid === 'function') renderInventoryGrid();
+    });
+})();
 
 function renderInventoryGrid() {
     const grid = document.getElementById('inventory-grid');
     if (!grid) return;
-    grid.innerHTML = '';
     const searchVal = (document.getElementById('inv-search-filter')?.value || '').toLowerCase();
     const stashVal = document.getElementById('inv-stash-filter')?.value || 'all';
     let items = Object.keys(localInventory).map(k => ({ id: k, ...localInventory[k] }));
     if (stashVal !== 'all') items = items.filter(i => i.stash === stashVal);
-    if (searchVal) items = items.filter(i => i.name.toLowerCase().includes(searchVal));
+    if (searchVal) items = items.filter(i => (i.name || '').toLowerCase().includes(searchVal));
     if (items.length === 0) {
-        grid.innerHTML = `<div class="col-span-full text-center py-6 text-gray-500 text-sm">Nessun oggetto in inventario.</div>`;
+        grid.innerHTML = '<div class="col-span-full text-center py-6 text-gray-500 text-sm">Nessun oggetto in inventario.</div>';
         return;
     }
+    const frag = document.createDocumentFragment();
+    const tpl = document.createElement('div');
     items.forEach(item => {
-        grid.innerHTML += `
-            <div onclick="openSmartModal('inv', '${item.id}')" class="relative bg-gray-800 rounded-xl border border-gray-700 overflow-hidden shadow-lg flex flex-col group cursor-pointer hover:border-amber-500 transition-all">
-                <button onclick="event.stopPropagation(); window.deleteInventoryItem('${item.id}', '${(item.name || '').replace(/'/g, "\\'")}')" class="absolute top-2 right-2 p-1.5 bg-red-600/90 hover:bg-red-700 text-white rounded-lg text-xs z-20 ${userRole !== 'gestore' ? 'hidden' : ''}" title="Rimuovi">
-                    <i class="fa-solid fa-trash"></i>
-                </button>
-                <div class="h-28 w-full bg-gray-900 flex items-center justify-center p-2">
-                    <img src="${item.imageUrl || 'https://via.placeholder.com/150?text=No+Immagine'}" alt="${item.name}" class="max-h-full max-w-full object-contain drop-shadow-md group-hover:scale-110 transition" onerror="this.src='https://via.placeholder.com/150?text=No+Immagine';">
-                </div>
-                <div class="p-3 flex-1 flex flex-col justify-between">
-                    <h4 class="font-bold text-amber-400 text-sm truncate">${item.name}</h4>
-                    <div class="mt-2 flex justify-between items-end">
-                        <span class="text-[10px] text-gray-400 font-semibold bg-gray-700 px-2 py-0.5 rounded">${getStashName(item.stash)}</span>
-                        <span class="text-emerald-400 font-bold text-sm">Qta: ${item.quantity}</span>
-                    </div>
-                </div>
-            </div>
-        `;
+        const safeName = (item.name || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        const delHidden = userRole !== 'gestore' ? 'hidden' : '';
+        const imgSrc = item.imageUrl || 'https://via.placeholder.com/150?text=No+Immagine';
+        tpl.innerHTML =
+            '<div onclick="openSmartModal(\'inv\', \'' + item.id + '\')" class="relative bg-gray-800 rounded-xl border border-gray-700 overflow-hidden shadow-lg flex flex-col group cursor-pointer hover:border-amber-500 transition-all inv-card">' +
+            '<button onclick="event.stopPropagation(); window.deleteInventoryItem(\'' + item.id + '\', \'' + safeName + '\')" class="absolute top-2 right-2 p-1.5 bg-red-600/90 hover:bg-red-700 text-white rounded-lg text-xs z-20 ' + delHidden + '" title="Rimuovi">' +
+            '<i class="fa-solid fa-trash"></i></button>' +
+            '<div class="h-28 w-full bg-gray-900 flex items-center justify-center p-2">' +
+            '<img src="' + imgSrc + '" alt="" loading="lazy" decoding="async" width="128" height="128" class="max-h-full max-w-full object-contain drop-shadow-md group-hover:scale-110 transition" onerror="this.onerror=null;this.src=\'https://via.placeholder.com/150?text=No+Immagine\';">' +
+            '</div>' +
+            '<div class="p-3 flex-1 flex flex-col justify-between">' +
+            '<h4 class="font-bold text-amber-400 text-sm truncate" title="' + safeName + '">' + (item.name || '') + '</h4>' +
+            '<div class="mt-2 flex justify-between items-end">' +
+            '<span class="text-[10px] text-gray-400 font-semibold bg-gray-700 px-2 py-0.5 rounded">' + getStashName(item.stash) + '</span>' +
+            '<span class="text-emerald-400 font-bold text-sm">Qta: ' + item.quantity + '</span>' +
+            '</div></div></div>';
+        while (tpl.firstChild) frag.appendChild(tpl.firstChild);
     });
+    grid.innerHTML = '';
+    grid.appendChild(frag);
 }
 
 function renderInventoryLogs() {
