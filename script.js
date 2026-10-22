@@ -28,6 +28,7 @@ let localInventoryLogs = [];
 let localStashes = {};
 let localArchive = {};
 let localItemImages = {};
+let localBalanceLogs = [];
 let localSettings = {
     freeSalesEnabled: false,
     freeSalesForgePct: 40
@@ -40,10 +41,12 @@ const roleBadge = document.getElementById('role-badge');
 
 const navSalesBtn = document.getElementById('nav-sales-btn');
 const navInventoryBtn = document.getElementById('nav-inventory-btn');
+const navSaldoBtn = document.getElementById('nav-saldo-btn');
 const navAdminBtn = document.getElementById('nav-admin-btn');
 
 const salesSection = document.getElementById('sales-section');
 const inventorySection = document.getElementById('inventory-section');
+const saldoSection = document.getElementById('saldo-section');
 const adminSection = document.getElementById('admin-section');
 
 const logoutBtn = document.getElementById('logout-btn');
@@ -406,7 +409,24 @@ document.getElementById('smart-modal-form').addEventListener('submit', (e) => {
             saleData.employeeGain = employeeGain;
         }
 
-        db.collection('current_sales').add(saleData)
+        // Batch: vendita + log saldo (evita doppi log)
+        const saleRef = db.collection('current_sales').doc();
+        const saldoRef = db.collection('saldo_movimenti').doc();
+        const batchSale = db.batch();
+        batchSale.set(saleRef, saleData);
+        batchSale.set(saldoRef, {
+            timestamp: saleData.timestamp,
+            dateString: saleData.dateString,
+            type: 'vendita',
+            amount: Number(saleData.totalPrice) || 0,
+            description: (saleData.serviceName || 'Vendita') + ' ×' + (saleData.quantity || 1),
+            relatedSaleId: saleRef.id,
+            employeeKey: empId,
+            employeeName: saleData.employeeName || '',
+            createdByRole: userRole,
+            createdByName: (userRole === 'gestore') ? 'Gestore' : (saleData.employeeName || '')
+        });
+        batchSale.commit()
             .then(() => {
                 closeSmartModal();
                 showToast("Vendita registrata!", "success");
@@ -625,6 +645,7 @@ function setupUIForRole() {
 
     show(navSalesBtn, isGestore || roles.sales !== false);
     show(navInventoryBtn, isGestore || roles.inv !== false);
+    show(navSaldoBtn, isGestore || roles.saldo === true);
     show(navAdminBtn, isGestore);
 
     const adminInv = document.getElementById('admin-inventory-controls');
@@ -637,12 +658,14 @@ function setupUIForRole() {
 
     if (isGestore || roles.sales !== false) showSection('sales');
     else if (roles.inv !== false) showSection('inventory');
+    else if (roles.saldo === true) showSection('saldo');
     else showSection('sales');
 }
 
 // --- NAVIGAZIONE ---
 navSalesBtn.addEventListener('click', () => showSection('sales'));
 navInventoryBtn.addEventListener('click', () => showSection('inventory'));
+navSaldoBtn?.addEventListener('click', () => showSection('saldo'));
 navAdminBtn.addEventListener('click', () => showSection('admin'));
 
 let currentSectionId = 'sales';
@@ -691,6 +714,9 @@ function refreshActiveSectionUI() {
             if (typeof renderInventoryGrid === 'function') renderInventoryGrid();
             if (typeof renderInventoryLogs === 'function') renderInventoryLogs();
             break;
+        case 'saldo':
+            if (typeof renderSaldoSection === 'function') renderSaldoSection();
+            break;
         case 'admin':
             if (typeof renderCatalog === 'function') renderCatalog();
             if (typeof renderEmployees === 'function') renderEmployees();
@@ -708,12 +734,12 @@ function refreshActiveSectionUI() {
 
 function showSection(section) {
     currentSectionId = section;
-    [salesSection, inventorySection, adminSection].forEach(s => s && s.classList.add('hidden'));
+    [salesSection, inventorySection, saldoSection, adminSection].forEach(s => s && s.classList.add('hidden'));
     
     const inactiveClass = "px-3 py-2 rounded-xl bg-gray-700 text-gray-200 font-medium transition hover:bg-gray-600 text-sm";
     const activeClass = "px-3 py-2 rounded-xl nav-active font-medium transition text-sm";
     
-    [navSalesBtn, navInventoryBtn, navAdminBtn].forEach(b => {
+    [navSalesBtn, navInventoryBtn, navSaldoBtn, navAdminBtn].forEach(b => {
         if (!b) return;
         const wasHidden = b.classList.contains('hidden');
         b.className = inactiveClass + (wasHidden ? ' hidden' : '');
@@ -725,6 +751,9 @@ function showSection(section) {
     } else if (section === 'inventory') {
         inventorySection.classList.remove('hidden');
         navInventoryBtn.className = activeClass;
+    } else if (section === 'saldo') {
+        if (saldoSection) saldoSection.classList.remove('hidden');
+        if (navSaldoBtn) navSaldoBtn.className = activeClass;
     } else if (section === 'admin') {
         adminSection.classList.remove('hidden');
         navAdminBtn.className = activeClass;
@@ -743,6 +772,16 @@ function initDatabaseListeners() {
     db.collection('employees').onSnapshot(snapshot => {
         localEmployees = {};
         snapshot.forEach(doc => { localEmployees[doc.id] = doc.data(); });
+        // Aggiorna ruoli sessione staff se cambia il permesso saldo/altro
+        if (userRole === 'dipendente' && currentEmployeeId && localEmployees[currentEmployeeId]) {
+            const emp = localEmployees[currentEmployeeId];
+            if (staffSession) {
+                staffSession.roles = emp.roles || staffSession.roles || {};
+                staffSession.customPercentage = emp.customPercentage != null ? emp.customPercentage : staffSession.customPercentage;
+                sessionStorage.setItem('forgia_staff_session', JSON.stringify(staffSession));
+            }
+            if (typeof setupUIForRole === 'function') setupUIForRole();
+        }
         scheduleUI(function () {
             if (typeof renderAllEmployeeDropdowns === 'function') renderAllEmployeeDropdowns();
             if (typeof renderAdminFilterDropdown === 'function') renderAdminFilterDropdown();
@@ -805,6 +844,14 @@ function initDatabaseListeners() {
                 if (isSectionVisible('inventory') && typeof renderInventoryLogs === 'function') renderInventoryLogs();
             });
         });
+
+        db.collection('saldo_movimenti').orderBy('timestamp', 'desc').limit(300).onSnapshot(snapshot => {
+            localBalanceLogs = [];
+            snapshot.forEach(doc => { localBalanceLogs.push({ id: doc.id, ...doc.data() }); });
+            scheduleUI(function () {
+                if (isSectionVisible('saldo') && typeof renderSaldoSection === 'function') renderSaldoSection();
+            });
+        }, err => console.error('saldo_movimenti listener', err));
 
         db.collection('archive').onSnapshot(snapshot => {
             localArchive = {};
@@ -1338,9 +1385,29 @@ window.deleteSale = function(saleId) {
     if (userRole !== 'gestore') return;
     const sale = localSales[saleId];
     const label = sale ? (sale.serviceName || 'questa vendita') : 'questa vendita';
-    showConfirmModal("Elimina vendita", `Eliminare definitivamente "${label}"?`, () => {
-        db.collection('current_sales').doc(saleId).delete()
-            .then(() => showToast("Vendita eliminata.", "info"))
+    showConfirmModal("Elimina vendita", `Eliminare definitivamente "${label}"? Verrà registrato uno STORNO sul saldo.`, () => {
+        // Evita storno doppio: se esiste già un movimento con relatedSaleId + type storno, non riscrivere
+        const alreadyStorno = localBalanceLogs.some(l => l.relatedSaleId === saleId && l.type === 'storno');
+        const batch = db.batch();
+        batch.delete(db.collection('current_sales').doc(saleId));
+        if (!alreadyStorno && sale) {
+            const saldoRef = db.collection('saldo_movimenti').doc();
+            const amt = Number(sale.totalPrice) || 0;
+            batch.set(saldoRef, {
+                timestamp: Date.now(),
+                dateString: new Date().toLocaleString('it-IT'),
+                type: 'storno',
+                amount: -Math.abs(amt),
+                description: 'Storno: ' + (sale.serviceName || 'vendita') + ' ×' + (sale.quantity || 1),
+                relatedSaleId: saleId,
+                employeeKey: sale.employeeKey || '',
+                employeeName: sale.employeeName || '',
+                createdByRole: 'gestore',
+                createdByName: 'Gestore'
+            });
+        }
+        batch.commit()
+            .then(() => showToast("Vendita eliminata e storno registrato sul saldo.", "info"))
             .catch(err => showToast(err.message, "error"));
     }, true);
 }
@@ -1606,6 +1673,7 @@ function resetEmployeeForm() {
     document.getElementById('emp-id').value = '';
     document.getElementById('role-sales').checked = true;
     document.getElementById('role-inv').checked = true;
+    if (document.getElementById('role-saldo')) document.getElementById('role-saldo').checked = false;
     if (empSubmitBtn) {
         empSubmitBtn.innerHTML = '<i class="fa-solid fa-user-plus mr-1"></i> Registra Nuovo Dipendente';
         empSubmitBtn.className = 'flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl transition';
@@ -1627,7 +1695,8 @@ if (employeeForm) {
 
         const roles = {
             sales: document.getElementById('role-sales').checked,
-            inv: document.getElementById('role-inv').checked
+            inv: document.getElementById('role-inv').checked,
+            saldo: document.getElementById('role-saldo') ? document.getElementById('role-saldo').checked : false
         };
 
         if (!name || !rank || !login || !password) {
@@ -1678,6 +1747,7 @@ window.editEmployee = function(key) {
     const roles = emp.roles || {};
     document.getElementById('role-sales').checked = roles.sales !== false;
     document.getElementById('role-inv').checked = roles.inv !== false;
+    if (document.getElementById('role-saldo')) document.getElementById('role-saldo').checked = roles.saldo === true;
 
     if (empSubmitBtn) {
         empSubmitBtn.innerHTML = '<i class="fa-solid fa-floppy-disk mr-1"></i> Salva Modifiche';
@@ -1720,6 +1790,7 @@ function renderEmployees() {
         const roleBadges = [];
         if (roles.sales !== false) roleBadges.push('<span class="text-amber-400">Vendite</span>');
         if (roles.inv !== false) roleBadges.push('<span class="text-blue-400">Inv</span>');
+        if (roles.saldo === true) roleBadges.push('<span class="text-emerald-400">Saldo</span>');
         tbody.innerHTML += `
             <tr class="hover:bg-gray-700/60 border-b border-gray-700 text-xs">
                 <td class="p-2 font-bold text-amber-400">${emp.name || '-'}</td>
@@ -1984,3 +2055,127 @@ function renderArchive(archiveList) {
         `;
     });
 }
+
+
+// ===== SALDO CAISSA / CASSA =====
+function canAccessSaldo() {
+    if (userRole === 'gestore') return true;
+    const roles = (staffSession && staffSession.roles) || {};
+    return roles.saldo === true;
+}
+
+function canEditSaldo() {
+    // Gestore sempre; dipendente con permesso saldo può versare/prelevare
+    return canAccessSaldo();
+}
+
+function getSaldoTotale() {
+    let tot = 0;
+    localBalanceLogs.forEach(l => {
+        const a = Number(l.amount);
+        if (!isNaN(a)) tot += a;
+    });
+    return tot;
+}
+
+function renderSaldoSection() {
+    if (!canAccessSaldo()) return;
+    const totEl = document.getElementById('saldo-totale');
+    if (totEl) {
+        const t = getSaldoTotale();
+        totEl.textContent = formatValuta(t);
+        totEl.className = 'text-3xl sm:text-4xl font-black mt-1 ' + (t >= 0 ? 'text-emerald-400' : 'text-red-400');
+    }
+    const formBox = document.getElementById('saldo-manual-form-box');
+    if (formBox) formBox.classList.toggle('hidden', !canEditSaldo());
+
+    const tbody = document.getElementById('saldo-movimenti-table');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    if (!localBalanceLogs.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-gray-500 text-xs">Nessun movimento di saldo.</td></tr>';
+        return;
+    }
+    const isGestore = userRole === 'gestore';
+    localBalanceLogs.forEach(log => {
+        const amt = Number(log.amount) || 0;
+        const isPos = amt >= 0;
+        let typeBadge = '';
+        switch (log.type) {
+            case 'vendita':
+                typeBadge = '<span class="text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded text-xs font-bold">💰 Vendita</span>';
+                break;
+            case 'storno':
+                typeBadge = '<span class="text-red-400 bg-red-400/10 px-2 py-1 rounded text-xs font-bold">↩️ Storno</span>';
+                break;
+            case 'versamento':
+                typeBadge = '<span class="text-amber-400 bg-amber-400/10 px-2 py-1 rounded text-xs font-bold">➕ Versamento</span>';
+                break;
+            case 'prelievo':
+                typeBadge = '<span class="text-orange-400 bg-orange-400/10 px-2 py-1 rounded text-xs font-bold">➖ Prelievo</span>';
+                break;
+            default:
+                typeBadge = '<span class="text-gray-400 bg-gray-700 px-2 py-1 rounded text-xs font-bold">' + (log.type || '—') + '</span>';
+        }
+        const delBtn = isGestore
+            ? '<button onclick="window.deleteSaldoMovimento(\'' + log.id + '\')" class="p-1.5 bg-red-600/20 text-red-400 rounded-lg hover:bg-red-600 hover:text-white transition" title="Elimina movimento"><i class="fa-solid fa-trash text-[10px]"></i></button>'
+            : '';
+        tbody.innerHTML += `
+            <tr class="hover:bg-gray-750/50 border-b border-gray-700">
+                <td class="py-2 px-2 text-xs text-gray-400 whitespace-nowrap">${log.dateString || '-'}</td>
+                <td class="py-2 px-2">${typeBadge}</td>
+                <td class="py-2 px-2 text-xs text-gray-300">${log.description || '-'}</td>
+                <td class="py-2 px-2 text-xs text-gray-400">${log.employeeName || log.createdByName || '-'}</td>
+                <td class="py-2 px-2 font-bold text-sm ${isPos ? 'text-emerald-400' : 'text-red-400'}">${isPos ? '+' : ''}${formatValuta(amt)}</td>
+                <td class="py-2 px-2 text-right">${delBtn}</td>
+            </tr>`;
+    });
+}
+
+window.deleteSaldoMovimento = function(id) {
+    if (userRole !== 'gestore') return;
+    showConfirmModal('Elimina movimento saldo', 'Eliminare definitivamente questo movimento dal saldo? Il totale verrà ricalcolato.', () => {
+        db.collection('saldo_movimenti').doc(id).delete()
+            .then(() => showToast('Movimento eliminato.', 'info'))
+            .catch(err => showToast(err.message, 'error'));
+    }, true);
+};
+
+document.getElementById('saldo-manual-form')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!canEditSaldo()) {
+        showToast('Non hai permesso di modificare il saldo.', 'error');
+        return;
+    }
+    const tipo = document.getElementById('saldo-manual-type').value;
+    const amountRaw = parseFloat(document.getElementById('saldo-manual-amount').value);
+    const note = (document.getElementById('saldo-manual-note').value || '').trim();
+    if (isNaN(amountRaw) || amountRaw <= 0) {
+        showToast('Inserisci un importo valido maggiore di 0.', 'warning');
+        return;
+    }
+    if (tipo !== 'versamento' && tipo !== 'prelievo') {
+        showToast('Seleziona versamento o prelievo.', 'warning');
+        return;
+    }
+    const signed = tipo === 'versamento' ? Math.abs(amountRaw) : -Math.abs(amountRaw);
+    const whoName = userRole === 'gestore' ? 'Gestore' : (staffSession?.name || currentEmployeeData?.name || 'Staff');
+    const whoKey = userRole === 'gestore' ? '' : (currentEmployeeId || '');
+    const desc = note || (tipo === 'versamento' ? 'Versamento manuale' : 'Prelievo manuale');
+    db.collection('saldo_movimenti').add({
+        timestamp: Date.now(),
+        dateString: new Date().toLocaleString('it-IT'),
+        type: tipo,
+        amount: signed,
+        description: desc,
+        relatedSaleId: null,
+        employeeKey: whoKey,
+        employeeName: whoName,
+        createdByRole: userRole,
+        createdByName: whoName
+    }).then(() => {
+        e.target.reset();
+        document.getElementById('saldo-manual-amount').value = '';
+        showToast(tipo === 'versamento' ? 'Versamento registrato.' : 'Prelievo registrato.', 'success');
+    }).catch(err => showToast(err.message, 'error'));
+});

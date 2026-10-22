@@ -194,6 +194,9 @@
                 <button id="nav-inventory-btn" class="px-3 py-2 rounded-xl bg-gray-700 text-gray-200 font-medium transition hover:bg-gray-600 text-sm">
                     <i class="fa-solid fa-boxes-stacked mr-1"></i> Inventario
                 </button>
+                <button id="nav-saldo-btn" class="px-3 py-2 rounded-xl bg-gray-700 text-gray-200 font-medium transition hover:bg-gray-600 text-sm hidden">
+                    <i class="fa-solid fa-wallet mr-1"></i> Saldo
+                </button>
                 <button id="nav-admin-btn" class="px-3 py-2 rounded-xl bg-gray-700 text-gray-200 font-medium transition hover:bg-gray-600 text-sm">
                     <i class="fa-solid fa-user-gear mr-1"></i> Gestione
                 </button>
@@ -342,6 +345,75 @@
                                 </table>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========== SEZIONE SALDO ========== -->
+            <section id="saldo-section" class="hidden space-y-6">
+                <div class="bg-gray-800/90 backdrop-blur-sm p-6 rounded-2xl border border-gray-700 shadow-xl">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div>
+                            <h2 class="text-xl font-bold text-amber-400 flex items-center">
+                                <i class="fa-solid fa-wallet mr-2"></i> Saldo Cassa Forgia
+                            </h2>
+                            <p class="text-gray-400 text-xs mt-1">Movimenti automatici da vendite/storni e versamenti/prelievi manuali.</p>
+                        </div>
+                        <div class="bg-gray-900 px-6 py-4 rounded-2xl border border-amber-500/40 text-center min-w-[180px]">
+                            <p class="text-[10px] uppercase tracking-wider text-gray-400 font-bold">Saldo attuale</p>
+                            <p id="saldo-totale" class="text-3xl sm:text-4xl font-black mt-1 text-emerald-400">€ 0,00</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="saldo-manual-form-box" class="bg-gray-800/90 backdrop-blur-sm p-6 rounded-2xl border border-gray-700 shadow-xl">
+                    <h3 class="text-lg font-bold text-amber-400 mb-3 flex items-center">
+                        <i class="fa-solid fa-money-bill-transfer mr-2"></i> Versamento / Prelievo manuale
+                    </h3>
+                    <p class="text-gray-400 text-xs mb-4">Registra denaro messo in cassa o prelevato. Ogni operazione compare nel registro.</p>
+                    <form id="saldo-manual-form" class="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-400 mb-1">Tipo</label>
+                            <select id="saldo-manual-type" required class="w-full px-3 py-2.5 bg-gray-900 border border-gray-600 rounded-xl text-white focus:outline-none focus:border-amber-500">
+                                <option value="versamento">➕ Versamento (+)</option>
+                                <option value="prelievo">➖ Prelievo (−)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-400 mb-1">Importo (€)</label>
+                            <input type="number" step="0.01" min="0.01" id="saldo-manual-amount" required placeholder="0.00" class="w-full px-3 py-2.5 bg-gray-900 border border-gray-600 rounded-xl text-white focus:outline-none focus:border-amber-500 font-bold text-emerald-400">
+                        </div>
+                        <div class="sm:col-span-1">
+                            <label class="block text-xs font-medium text-gray-400 mb-1">Nota (opzionale)</label>
+                            <input type="text" id="saldo-manual-note" placeholder="Es. Cambio, deposito..." class="w-full px-3 py-2.5 bg-gray-900 border border-gray-600 rounded-xl text-white focus:outline-none focus:border-amber-500">
+                        </div>
+                        <div>
+                            <button type="submit" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition shadow-lg">
+                                <i class="fa-solid fa-check mr-1"></i> Registra
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="bg-gray-800/90 backdrop-blur-sm p-6 rounded-2xl border border-gray-700 shadow-xl">
+                    <h3 class="text-lg font-bold text-amber-400 mb-4 flex items-center">
+                        <i class="fa-solid fa-list-ul mr-2"></i> Registro movimenti saldo
+                    </h3>
+                    <div class="overflow-x-auto max-h-[420px] overflow-y-auto border border-gray-700 rounded-xl">
+                        <table class="w-full text-left text-sm border-collapse">
+                            <thead>
+                                <tr class="border-b border-gray-700 text-gray-400 text-xs uppercase tracking-wider sticky top-0 bg-gray-800 z-10">
+                                    <th class="p-3">Data</th>
+                                    <th class="p-3">Tipo</th>
+                                    <th class="p-3">Descrizione</th>
+                                    <th class="p-3">Operatore</th>
+                                    <th class="p-3">Importo</th>
+                                    <th class="p-3 text-right">Azioni</th>
+                                </tr>
+                            </thead>
+                            <tbody id="saldo-movimenti-table" class="divide-y divide-gray-700">
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </section>
@@ -549,6 +621,10 @@
                                 <label class="inline-flex items-center gap-2 bg-gray-900 px-3 py-2 rounded-xl border border-gray-600 cursor-pointer hover:border-amber-500">
                                     <input type="checkbox" id="role-inv" class="rounded text-amber-500 focus:ring-amber-500" checked>
                                     <span class="text-xs text-gray-200">Inventario</span>
+                                </label>
+                                <label class="inline-flex items-center gap-2 bg-gray-900 px-3 py-2 rounded-xl border border-gray-600 cursor-pointer hover:border-amber-500">
+                                    <input type="checkbox" id="role-saldo" class="rounded text-amber-500 focus:ring-amber-500">
+                                    <span class="text-xs text-gray-200">Saldo</span>
                                 </label>
                             </div>
                         </div>
